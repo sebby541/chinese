@@ -1,0 +1,851 @@
+# game.py - Liang Shanbo and Zhu Yingtai Platformer Story Game
+import pygame
+import sys
+import os
+from enum import Enum
+
+class GameState(Enum):
+    TITLE = 0             # 标题 - Title screen
+    LEVEL_1 = 1           # 相遇之路 - Road to meeting (platform level)
+    STORY_1 = 10          # Story cutscene 1
+    LEVEL_2 = 2           # 书院三年 - Three years at academy
+    STORY_2 = 11          # Story cutscene 2
+    LEVEL_3 = 3           # 回家之路 - Journey home
+    STORY_3 = 12          # Story cutscene 3
+    LEVEL_4 = 4           # 追求之梦 - The pursuit
+    STORY_4 = 13          # Story cutscene 4
+    LEVEL_5 = 5           # 化蝶升天 - Butterfly transformation
+    ENDING = 6            # 结局 - Ending
+
+# Music and sound effects configuration
+AUDIO_PATHS = {
+    "title": "assets/music/title.mp3",
+    "level_1": "assets/music/level1_road.mp3",
+    "level_2": "assets/music/level2_academy.mp3",
+    "level_3": "assets/music/level3_home.mp3",
+    "level_4": "assets/music/level4_pursuit.mp3",
+    "level_5": "assets/music/level5_butterfly.mp3",
+    "story": "assets/music/story_cutscene.mp3",
+    "ending": "assets/music/ending_butterfly.mp3",
+    "jump": "assets/sfx/jump.wav",
+    "goal": "assets/sfx/goal.wav",
+    "heartbreak": "assets/sfx/heartbreak.wav"
+}
+
+class SoundManager:
+    """Manages all game music and sound effects"""
+    def __init__(self):
+        pygame.mixer.init()
+        self.current_music = None
+        self.sounds = {}
+        self.music_volume = 0.7
+        self.sfx_volume = 0.5
+        self.load_sounds()
+    
+    def load_sounds(self):
+        """Load sound effects (non-music audio)"""
+        sfx_files = ["jump", "goal", "heartbreak"]
+        for sfx in sfx_files:
+            try:
+                key = AUDIO_PATHS.get(sfx, "")
+                if key and os.path.exists(key):
+                    self.sounds[sfx] = pygame.mixer.Sound(key)
+                    self.sounds[sfx].set_volume(self.sfx_volume)
+            except:
+                pass  # Skip if file doesn't exist
+    
+    def play_music(self, music_key, loops=-1):
+        """Play background music"""
+        if not music_key in AUDIO_PATHS:
+            return
+        
+        path = AUDIO_PATHS[music_key]
+        if not os.path.exists(path):
+            return
+        
+        try:
+            if self.current_music != music_key:
+                pygame.mixer.music.load(path)
+                pygame.mixer.music.set_volume(self.music_volume)
+                pygame.mixer.music.play(loops)
+                self.current_music = music_key
+        except:
+            pass
+    
+    def play_sound(self, sfx_key):
+        """Play sound effect"""
+        if sfx_key in self.sounds:
+            self.sounds[sfx_key].play()
+    
+    def stop_music(self):
+        """Stop background music"""
+        pygame.mixer.music.stop()
+        self.current_music = None
+
+
+
+# Level platform data
+LEVEL_PLATFORMS = {
+    GameState.LEVEL_1: {
+        "name_en": "Road to Meeting",
+        "name_zh": "相遇之路",
+        "goal_x": 1200,
+        "goal_y": 600,
+        "start_x": 20,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 150, "h": 120},      # Start platform
+            {"x": 200, "y": 550, "w": 150, "h": 20},     # Small jump
+            {"x": 400, "y": 500, "w": 150, "h": 20},     # Higher jump
+            {"x": 600, "y": 450, "w": 150, "h": 20},     # Climb up
+            {"x": 800, "y": 500, "w": 150, "h": 20},     # Rise then fall
+            {"x": 1000, "y": 550, "w": 150, "h": 20},    # Down and across
+            {"x": 1200, "y": 600, "w": 80, "h": 120},    # Goal platform
+            {"x": 1400, "y": 560, "w": 140, "h": 20},
+            {"x": 1700, "y": 520, "w": 160, "h": 20},
+            {"x": 2000, "y": 560, "w": 120, "h": 20},
+            {"x": 2300, "y": 500, "w": 160, "h": 20},
+            {"x": 2600, "y": 560, "w": 200, "h": 20},
+            {"x": 2900, "y": 600, "w": 120, "h": 120},
+        ]
+    },
+
+    # Distinct layout for Level 2 — Academy: tighter, more vertical jumps
+    GameState.LEVEL_2: {
+        "name_en": "Three Years Academy",
+        "name_zh": "书院三年",
+        "goal_x": 1220,
+        "goal_y": 600,
+        "start_x": 20,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 220, "y": 540, "w": 100, "h": 20},
+            {"x": 360, "y": 480, "w": 120, "h": 20},
+            {"x": 520, "y": 420, "w": 90, "h": 20},
+            {"x": 680, "y": 360, "w": 160, "h": 20},
+            {"x": 880, "y": 440, "w": 110, "h": 20},
+            {"x": 1040, "y": 520, "w": 120, "h": 20},
+            {"x": 1220, "y": 600, "w": 80, "h": 120},
+            {"x": 1500, "y": 560, "w": 110, "h": 20},
+            {"x": 1750, "y": 520, "w": 140, "h": 20},
+            {"x": 2000, "y": 460, "w": 160, "h": 20},
+            {"x": 2250, "y": 400, "w": 150, "h": 20},
+            {"x": 2550, "y": 520, "w": 180, "h": 20},
+            {"x": 2850, "y": 600, "w": 120, "h": 120},
+        ]
+    },
+
+    # Level 3 — Journey Home: wider gaps and some long jumps
+    GameState.LEVEL_3: {
+        "name_en": "Journey Home",
+        "name_zh": "回家之路",
+        "goal_x": 1200,
+        "goal_y": 600,
+        "start_x": 20,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 180, "y": 560, "w": 120, "h": 20},
+            {"x": 380, "y": 500, "w": 100, "h": 20},
+            {"x": 560, "y": 440, "w": 140, "h": 20},
+            {"x": 760, "y": 380, "w": 100, "h": 20},
+            {"x": 960, "y": 520, "w": 120, "h": 20},
+            {"x": 1200, "y": 600, "w": 80, "h": 120},
+            {"x": 1450, "y": 560, "w": 130, "h": 20},
+            {"x": 1700, "y": 520, "w": 140, "h": 20},
+            {"x": 1950, "y": 480, "w": 160, "h": 20},
+            {"x": 2200, "y": 520, "w": 130, "h": 20},
+            {"x": 2500, "y": 560, "w": 160, "h": 20},
+            {"x": 2800, "y": 600, "w": 120, "h": 120},
+        ]
+    },
+
+    # Level 4 — The Pursuit: vertical ascents and risky narrow ledges
+    GameState.LEVEL_4: {
+        "name_en": "The Pursuit",
+        "name_zh": "追求之梦",
+        "goal_x": 1200,
+        "goal_y": 600,
+        "start_x": 20,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 220, "y": 520, "w": 80, "h": 20},
+            {"x": 320, "y": 460, "w": 60, "h": 20},
+            {"x": 420, "y": 400, "w": 140, "h": 20},
+            {"x": 620, "y": 340, "w": 70, "h": 20},
+            {"x": 760, "y": 300, "w": 90, "h": 20},
+            {"x": 920, "y": 380, "w": 120, "h": 20},
+            {"x": 1100, "y": 520, "w": 120, "h": 20},
+            {"x": 1200, "y": 600, "w": 80, "h": 120},
+            {"x": 1480, "y": 520, "w": 90, "h": 20},
+            {"x": 1700, "y": 460, "w": 80, "h": 20},
+            {"x": 1920, "y": 400, "w": 140, "h": 20},
+            {"x": 2150, "y": 340, "w": 120, "h": 20},
+            {"x": 2400, "y": 420, "w": 150, "h": 20},
+            {"x": 2700, "y": 520, "w": 140, "h": 20},
+            {"x": 3000, "y": 600, "w": 120, "h": 120},
+        ]
+    },
+
+    # Level 5 — Butterfly Ascension: vertical climb toward a high goal
+    GameState.LEVEL_5: {
+        "name_en": "Butterfly Ascension",
+        "name_zh": "化蝶升天",
+        "goal_x": 640,
+        "goal_y": 120,
+        "start_x": 20,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 200, "y": 520, "w": 130, "h": 20},
+            {"x": 360, "y": 460, "w": 110, "h": 20},
+            {"x": 520, "y": 380, "w": 100, "h": 20},
+            {"x": 680, "y": 300, "w": 120, "h": 20},
+            {"x": 840, "y": 220, "w": 90, "h": 20},
+            {"x": 640, "y": 140, "w": 120, "h": 20},
+            {"x": 820, "y": 80, "w": 100, "h": 20},
+            {"x": 980, "y": 40, "w": 100, "h": 20},
+            {"x": 1150, "y": 80, "w": 140, "h": 20},
+            {"x": 1320, "y": 140, "w": 160, "h": 20},
+            {"x": 1500, "y": 200, "w": 200, "h": 20},
+            {"x": 1700, "y": 260, "w": 180, "h": 20},
+            {"x": 1900, "y": 320, "w": 200, "h": 20},
+            {"x": 2100, "y": 380, "w": 220, "h": 20},
+            {"x": 2300, "y": 440, "w": 240, "h": 20},
+            {"x": 2500, "y": 500, "w": 260, "h": 20},
+            {"x": 2800, "y": 560, "w": 300, "h": 120},
+        ]
+    }
+}
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.width = 30
+        self.height = 40
+        self.vel_x = 0
+        self.vel_y = 0
+        self.on_ground = False
+        self.gravity = 0.7
+        self.jump_power = -13
+        # Smooth movement variables
+        self.speed = 5
+        self.max_speed = 7
+        # Movement tuning for more fluid control
+        self.accel = 0.9
+        self.ground_accel = 1.0    # per-frame horizontal acceleration on ground (tuned)
+        self.air_accel = 0.35      # per-frame horizontal acceleration in air (tuned)
+        self.ground_friction = 0.7 # stronger friction when stopping on ground (tuned)
+        self.brake_factor = 0.35   # instant braking when reversing direction (snappier)
+        self.friction = 0.9
+        # coyote time for forgiving jumps (frames)
+        self.coyote_time_max = 8
+        self.coyote_timer = 0
+        # jump buffer
+        self.jump_buffer_max = 6
+        self.jump_buffer = 0
+        # variable jump (cut jump short on release)
+        self.holding_jump = False
+        self.jump_cut_multiplier = 0.45
+    
+    def handle_input(self, keys):
+        # Determine desired horizontal direction
+        target_vx = 0
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            target_vx = -self.max_speed
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            target_vx = self.max_speed
+
+        # Smooth, responsive acceleration: different in air vs ground
+        accel_amount = self.ground_accel if self.on_ground else self.air_accel
+        # compute change needed
+        diff = target_vx - self.vel_x
+        # apply acceleration toward target, clamped by accel_amount
+        if diff > 0:
+            self.vel_x += min(diff, accel_amount)
+        elif diff < 0:
+            self.vel_x += max(diff, -accel_amount)
+
+        # Strong braking when reversing direction on ground
+        if self.on_ground and target_vx != 0 and (self.vel_x * target_vx) < 0:
+            self.vel_x *= self.brake_factor
+
+        # Apply friction when no input (ground only)
+        if target_vx == 0 and self.on_ground:
+            self.vel_x *= self.ground_friction
+
+        # clamp horizontal speed
+        if self.vel_x > self.max_speed:
+            self.vel_x = self.max_speed
+        if self.vel_x < -self.max_speed:
+            self.vel_x = -self.max_speed
+
+        # Jump buffering and hold detection (for variable jump height)
+        wants_jump = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+        if wants_jump:
+            self.jump_buffer = self.jump_buffer_max
+            self.holding_jump = True
+        else:
+            self.jump_buffer = max(0, self.jump_buffer - 1)
+            self.holding_jump = False
+    
+    def update(self, platforms):
+        # Apply gravity
+        self.vel_y += self.gravity
+        
+        # Update position
+        self.x += self.vel_x
+        self.y += self.vel_y
+        
+        # Collision detection
+        # Update coyote timer
+        if self.on_ground:
+            self.coyote_timer = self.coyote_time_max
+        else:
+            self.coyote_timer = max(0, self.coyote_timer - 1)
+
+        self.on_ground = False
+        player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        
+        for platform in platforms:
+            plat_rect = pygame.Rect(platform["x"], platform["y"], platform["w"], platform["h"])
+            if player_rect.colliderect(plat_rect):
+                # Landing on platform from above
+                if self.vel_y > 0 and player_rect.bottom >= plat_rect.top and player_rect.centery < plat_rect.centery:
+                    self.y = plat_rect.top - self.height
+                    self.vel_y = 0
+                    self.on_ground = True
+                    self.coyote_timer = self.coyote_time_max
+
+        # Handle buffered jump (if buffer present and coyote time allows)
+        if self.jump_buffer > 0 and self.coyote_timer > 0:
+            self.vel_y = self.jump_power
+            self.on_ground = False
+            self.jump_buffer = 0
+            self.coyote_timer = 0
+        # Variable jump: if player released jump early while moving upward,
+        # reduce upward velocity so jumps feel snappier and more controllable.
+        if not self.holding_jump and self.vel_y < 0:
+            self.vel_y *= self.jump_cut_multiplier
+        
+        # Left screen/world boundary
+        if self.x < 0:
+            self.x = 0
+        
+        # Fall off screen
+        if self.y > 720:
+            return False
+        return True
+    
+    def draw(self, screen, camera_x=0):
+        """Draw detailed character sprite"""
+        # Basic screen offset support: if a camera is applied the caller
+        # should pass a `camera_x` argument into draw(). For backward
+        # compatibility we default to 0 and compute draw_x accordingly.
+        draw_x = camera_x
+        # main body (robe) with more detail: sash, collar, and shading
+        body_x = int(self.x - draw_x)
+        body_y = int(self.y)
+        # small lean based on horizontal velocity for visual feedback
+        lean = int(max(-6, min(6, -self.vel_x * 1.8)))
+        # Robe base
+        pygame.draw.rect(screen, (100, 150, 200), (body_x + 5, body_y + 10, 20, 25), 0)
+        # Sash (shifted by lean)
+        pygame.draw.rect(screen, (180, 50, 80), (body_x + 8 + lean, body_y + 18, 14, 6), 0)
+        # Collar (shifted by lean)
+        pygame.draw.polygon(screen, (220, 180, 160), [(body_x + 8 + lean, body_y + 10), (body_x + 15 + lean, body_y + 2), (body_x + 22 + lean, body_y + 10)])
+        # Head with simple hair (shifted by lean)
+        pygame.draw.circle(screen, (220, 180, 160), (body_x + 15 + lean, body_y + 5), 6)
+        pygame.draw.arc(screen, (40, 30, 20), (body_x + 9 + lean, body_y - 3, 12, 10), 3.14, 6.28, 2)
+        # Eyes and subtle smile
+        pygame.draw.circle(screen, (0, 0, 0), (body_x + 13 + lean, body_y + 3), 2)
+        pygame.draw.circle(screen, (0, 0, 0), (body_x + 17 + lean, body_y + 3), 2)
+        pygame.draw.arc(screen, (0, 0, 0), (body_x + 11 + lean, body_y + 4, 8, 6), 3.14, 0, 1)
+        # Arms with slight shading
+        pygame.draw.line(screen, (220, 180, 160), (body_x + 5 + lean, body_y + 15), (body_x + lean, body_y + 12), 3)
+        pygame.draw.line(screen, (220, 180, 160), (body_x + 25 + lean, body_y + 15), (body_x + 30 + lean, body_y + 12), 3)
+        # Legs / shoes
+        pygame.draw.line(screen, (50, 50, 50), (body_x + 10, body_y + 35), (body_x + 10, body_y + 42), 4)
+        pygame.draw.line(screen, (50, 50, 50), (body_x + 20, body_y + 35), (body_x + 20, body_y + 42), 4)
+        # Outline
+        pygame.draw.rect(screen, (0, 0, 0), (body_x, body_y, self.width, self.height), 2)
+
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1280, 720))
+        pygame.display.set_caption("梁山伯与祝英台 - Liang Shanbo & Zhu Yingtai")
+        self.clock = pygame.time.Clock()
+        self.state = GameState.TITLE
+        self.running = True
+        self.language = "en"
+        # Camera and world sizing for longer levels
+        self.camera_x = 0
+        self.world_width = 1280
+        
+        # Load fonts
+        # Use a font that supports Chinese if available
+        self.font_large = self.get_font(56)
+        self.font_medium = self.get_font(36)
+        self.font_small = self.get_font(24)
+        
+        # Initialize sound manager
+        self.sound_manager = SoundManager()
+        
+        # Player and level data
+        self.player = None
+        self.current_platforms = []
+        self.goal_x = 0
+        self.goal_y = 600
+        self.anim_offset = 0
+        self.level_complete = False
+        self.message = ""
+        self.message_timer = 0
+        self.jump_pressed = False  # Prevent multiple jumps
+        
+        # Story messages for cutscenes
+        self.story_messages = {
+            GameState.STORY_1: {
+                "en": ["Liang Shanbo travels to the academy", "He meets a young scholar on the road", "It is Zhu Yingtai, disguised as a boy!"],
+                "zh": ["梁山伯去书院读书", "路上遇见一位年轻书生", "他不知道这其实是祝英台女扮男装！"]
+            },
+            GameState.STORY_2: {
+                "en": ["Three years pass studying together", "Liang Shanbo falls in love", "But he doesn't know her true identity"],
+                "zh": ["三年同窗生活", "梁山伯深深爱上他", "却不知道她其实是女性"]
+            },
+            GameState.STORY_3: {
+                "en": ["Zhu Yingtai must return home", "Liang Shanbo escorts her", "At her home, the truth is revealed!"],
+                "zh": ["祝英台必须回家", "梁山伯送她回家", "到家时，真相终于揭露！"]
+            },
+            GameState.STORY_4: {
+                "en": ["Zhu Yingtai is promised to another!", "Heartbroken, Liang Shanbo falls ill", "He dies of a broken heart"],
+                "zh": ["祝英台被迫与他人订婚！", "梁山伯悲痛欲绝", "他因情而殁"]
+            },
+        }
+    
+    def run(self):
+        while self.running:
+            self.handle_input()
+            self.update()
+            self.render()
+            self.clock.tick(60)
+        pygame.quit()
+
+    def get_font(self, size):
+        """Try to find a font that supports Chinese characters.
+        Checks common system fonts first, then looks in assets/fonts.
+        Falls back to default font if nothing found."""
+        # Common font family names that may contain Chinese glyphs
+        candidates = [
+            "NotoSansCJK-Regular", "NotoSansCJK", "Noto Sans CJK", "NotoSansSC", "SimHei",
+            "Microsoft YaHei", "PingFang SC", "Heiti SC", "Arial Unicode MS"
+        ]
+        for name in candidates:
+            try:
+                path = pygame.font.match_font(name)
+                if path:
+                    return pygame.font.Font(path, size)
+            except Exception:
+                continue
+
+        # Look for bundled fonts in assets/fonts
+        try:
+            base_dir = os.path.dirname(__file__)
+        except NameError:
+            base_dir = os.getcwd()
+        fonts_dir = os.path.join(base_dir, "assets", "fonts")
+        if os.path.isdir(fonts_dir):
+            for fname in os.listdir(fonts_dir):
+                if fname.lower().endswith((".ttf", ".ttc", ".otf")):
+                    try:
+                        return pygame.font.Font(os.path.join(fonts_dir, fname), size)
+                    except Exception:
+                        continue
+
+        # Last resort: default font (may not render Chinese)
+        try:
+            return pygame.font.Font(None, size)
+        except Exception:
+            return pygame.font.SysFont(None, size)
+    
+    def handle_input(self):
+        keys = pygame.key.get_pressed()
+        
+        # Jump key tracking for sound
+        current_jump = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_l:
+                    self.language = "zh" if self.language == "en" else "en"
+                elif event.key == pygame.K_r:
+                    self.reset_level()
+                elif event.key == pygame.K_SPACE:
+                    # Start from title
+                    if self.state == GameState.TITLE:
+                        self.state = GameState.LEVEL_1
+                        self.start_level()
+                    # If the level is marked complete, advance on SPACE
+                    elif self.level_complete:
+                        self.advance_level()
+                    # During story screens allow advancing
+                    elif self.state in [GameState.STORY_1, GameState.STORY_2, GameState.STORY_3, GameState.STORY_4]:
+                        self.advance_level()
+
+                    # Play jump SFX when initiating a jump from ground
+                    if self.player and self.player.on_ground:
+                        self.sound_manager.play_sound("jump")
+        
+        # Player input for platformer levels
+        if self.player and self.state in [GameState.LEVEL_1, GameState.LEVEL_2, GameState.LEVEL_3, GameState.LEVEL_4, GameState.LEVEL_5]:
+            self.player.handle_input(keys)
+            # play jump SFX when leaving ground (simple detection)
+            if current_jump and self.player.on_ground and not self.jump_pressed:
+                self.sound_manager.play_sound("jump")
+                self.jump_pressed = True
+            elif not current_jump:
+                self.jump_pressed = False
+    
+    def start_level(self):
+        level_key = self.state
+        if level_key in LEVEL_PLATFORMS:
+            level_data = LEVEL_PLATFORMS[level_key]
+            self.current_platforms = level_data["platforms"]
+            self.goal_x = level_data.get("goal_x", 1200)
+            self.goal_y = level_data.get("goal_y", 600)
+            start_x = level_data.get("start_x", 50)
+            self.player = Player(start_x, 560)
+            self.level_complete = False
+            
+            # Play appropriate level music
+            music_map = {
+                GameState.LEVEL_1: "level_1",
+                GameState.LEVEL_2: "level_2",
+                GameState.LEVEL_3: "level_3",
+                GameState.LEVEL_4: "level_4",
+                GameState.LEVEL_5: "level_5"
+            }
+            if level_key in music_map:
+                self.sound_manager.play_music(music_map[level_key])
+            # calculate world width from platforms and goal
+            max_x = self.goal_x
+            for p in self.current_platforms:
+                max_x = max(max_x, p.get("x", 0) + p.get("w", 0))
+            self.world_width = max(1280, max_x + 200)
+            # reset camera
+            self.camera_x = 0
+    
+    def reset_level(self):
+        if self.state in LEVEL_PLATFORMS:
+            self.start_level()
+    
+    def update(self):
+        self.anim_offset = (self.anim_offset + 1) % 60
+        self.message_timer = max(0, self.message_timer - 1)
+        
+        # Update platformer level
+        if self.player and self.state in [GameState.LEVEL_1, GameState.LEVEL_2, GameState.LEVEL_3, GameState.LEVEL_4, GameState.LEVEL_5]:
+            if not self.player.update(self.current_platforms):
+                self.message = "You fell! Press R to retry" if self.language == "en" else "你掉下来了！按R重试"
+                self.message_timer = 120
+                self.sound_manager.play_sound("heartbreak")
+                self.reset_level()
+            
+            # Check if reached goal
+            player_rect = pygame.Rect(self.player.x, self.player.y, self.player.width, self.player.height)
+            goal_rect = pygame.Rect(self.goal_x - 20, self.goal_y - 20, 40, 100)
+            if player_rect.colliderect(goal_rect):
+                if not self.level_complete:
+                    self.level_complete = True
+                    self.sound_manager.play_sound("goal")
+                    self.message = "Level Complete! Press SPACE" if self.language == "en" else "关卡完成！按空格"
+                    self.message_timer = 180
+                    # Auto-advance after delay
+                    if self.message_timer < 60:
+                        self.advance_level()
+            # Update camera to follow player (centered)
+            target_cam = int(self.player.x - (1280 // 2))
+            max_cam = max(0, self.world_width - 1280)
+            self.camera_x = max(0, min(target_cam, max_cam))
+    
+    def advance_level(self):
+        state_order = [
+            GameState.LEVEL_1, GameState.STORY_1,
+            GameState.LEVEL_2, GameState.STORY_2,
+            GameState.LEVEL_3, GameState.STORY_3,
+            GameState.LEVEL_4, GameState.STORY_4,
+            GameState.LEVEL_5, GameState.ENDING
+        ]
+        
+        try:
+            current_idx = state_order.index(self.state)
+            if current_idx < len(state_order) - 1:
+                self.state = state_order[current_idx + 1]
+                if self.state in [GameState.LEVEL_1, GameState.LEVEL_2, GameState.LEVEL_3, GameState.LEVEL_4, GameState.LEVEL_5]:
+                    self.start_level()
+                elif self.state in [GameState.STORY_1, GameState.STORY_2, GameState.STORY_3, GameState.STORY_4]:
+                    self.sound_manager.play_music("story")
+        except ValueError:
+            pass
+    
+    def draw_background_level1(self):
+        """Draw road scenery for Level 1"""
+        # Sky gradient effect
+        for y in range(0, 400):
+            color_val = int(135 + (y / 400) * 50)
+            pygame.draw.line(self.screen, (color_val, color_val + 50, 200), (0, y), (1280, y))
+        
+        # Mountains in distance
+        pygame.draw.polygon(self.screen, (100, 100, 100), [(0, 300), (400, 100), (800, 300)])
+        pygame.draw.polygon(self.screen, (120, 120, 120), [(600, 300), (1000, 80), (1280, 300)])
+        
+        # Sun/moon
+        pygame.draw.circle(self.screen, (255, 200, 100), (1100, 150), 50)
+        
+        # Road elements
+        for x in range(0,  max(1280, self.world_width), 100):
+            pygame.draw.line(self.screen, (150, 150, 100), (x - self.camera_x, 400), (x + 50 - self.camera_x, 400), 2)
+    
+    def draw_background_level2(self):
+        """Draw academy scenery for Level 2"""
+        # Sky
+        for y in range(0, 400):
+            # compute gradient base and clamp channels to valid 0-255 range
+            color_val = 180 - (y / 400) * 50
+            r = int(max(0, min(255, color_val + 30)))
+            g = int(max(0, min(255, color_val + 50)))
+            b = int(max(0, min(255, color_val + 100)))
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Academy building in background
+        pygame.draw.polygon(self.screen, (180, 140, 80), [(200, 250), (200, 350), (500, 300)])
+        pygame.draw.rect(self.screen, (200, 160, 100), (300, 200, 300, 150))
+        
+        # Windows
+        for i in range(4):
+            pygame.draw.rect(self.screen, (255, 255, 100), (320 + i * 60, 220, 30, 30))
+        
+        # Roof
+        pygame.draw.polygon(self.screen, (150, 100, 50), [(300, 200), (600, 200), (450, 100)])
+    
+    def draw_background_level3(self):
+        """Draw mountain/path scenery for Level 3"""
+        # Sky with clouds
+        pygame.draw.rect(self.screen, (200, 230, 255), (0, 0, 1280, 400))
+        
+        # Clouds
+        for cx in [200, 500, 900]:
+            pygame.draw.circle(self.screen, (255, 255, 255), (cx, 100), 30)
+            pygame.draw.circle(self.screen, (255, 255, 255), (cx + 40, 110), 25)
+        
+        # Mountains
+        pygame.draw.polygon(self.screen, (100, 150, 80), [(0, 400), (300, 150), (600, 400)])
+        pygame.draw.polygon(self.screen, (120, 170, 100), [(400, 400), (800, 100), (1280, 400)])
+        
+        # River
+        pygame.draw.rect(self.screen, (100, 150, 200), (600, 350, 100, 50))
+    
+    def draw_background_level4(self):
+        """Draw stormy/dramatic scenery for Level 4"""
+        # Dark stormy sky
+        for y in range(0, 400):
+            darkness = int((y / 400) * 100)
+            pygame.draw.line(self.screen, (100 - darkness, 100 - darkness, 150 - darkness), (0, y), (1280, y))
+        
+        # Lightning effect (based on animation)
+        if self.anim_offset % 15 < 5:
+            pygame.draw.line(self.screen, (255, 255, 255), (500, 0), (600, 200), 3)
+            pygame.draw.line(self.screen, (255, 255, 255), (600, 200), (550, 400), 3)
+        
+        # Dark clouds
+        for cx in [100, 400, 800, 1100]:
+            pygame.draw.circle(self.screen, (50, 50, 70), (cx, 80 + self.anim_offset), 40)
+    
+    def draw_background_level5(self):
+        """Draw magical butterfly/sky scenery for Level 5"""
+        # Gradient sky from purple to pink
+        for y in range(0, 400):
+            r = int(150 + (y / 400) * 50)
+            g = int(100 + (y / 400) * 80)
+            b = int(200 - (y / 400) * 100)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Floating clouds
+        for ci, cx in enumerate([150, 450, 750, 1050]):
+            pygame.draw.circle(self.screen, (255, 200, 200), (cx + self.anim_offset, 100 + ci * 30), 25)
+            pygame.draw.circle(self.screen, (255, 200, 200), (cx + self.anim_offset + 40, 110 + ci * 30), 20)
+        
+        # Decorative stars
+        for i in range(10):
+            star_x = (i * 128 + self.anim_offset) % 1280
+            star_y = 50 + (i % 3) * 50
+            pygame.draw.circle(self.screen, (255, 255, 200), (star_x, star_y), 2)
+    
+    def draw_text(self, text, font, color, x, y, center=False):
+        text_surface = font.render(text, True, color)
+        text_rect = text_surface.get_rect()
+        if center:
+            text_rect.center = (x, y)
+        else:
+            text_rect.topleft = (x, y)
+        self.screen.blit(text_surface, text_rect)
+    
+    def render(self):
+        self.screen.fill((245, 245, 220))
+        
+        if self.state == GameState.TITLE:
+            # Title background with gradient
+            for y in range(0, 720):
+                shade = int(200 + (y / 720) * 50)
+                pygame.draw.line(self.screen, (shade - 50, shade - 20, shade), (0, y), (1280, y))
+            
+            # Decorative butterflies
+            for i in range(4):
+                bx = 150 + i * 300 + int(40 * self.anim_offset / 60)
+                by = 150 + (i % 2) * 400
+                self.draw_butterfly(bx, by)
+            
+            # Title text
+            self.draw_text("梁山伯与祝英台", self.font_large, (200, 50, 100), 640, 250, center=True)
+            self.draw_text("Liang Shanbo & Zhu Yingtai", self.font_medium, (100, 50, 150), 640, 320, center=True)
+            self.draw_text("A Legendary Platformer", self.font_small, (100, 100, 100), 640, 380, center=True)
+            self.draw_text("Press SPACE to start", self.font_small, (150, 100, 50), 640, 500, center=True)
+            
+            # Play title music on first render
+            if not hasattr(self, 'title_music_played'):
+                self.sound_manager.play_music("title")
+                self.title_music_played = True
+            
+        elif self.state in [GameState.LEVEL_1, GameState.LEVEL_2, GameState.LEVEL_3, GameState.LEVEL_4, GameState.LEVEL_5]:
+            # Draw background based on level
+            if self.state == GameState.LEVEL_1:
+                self.draw_background_level1()
+            elif self.state == GameState.LEVEL_2:
+                self.draw_background_level2()
+            elif self.state == GameState.LEVEL_3:
+                self.draw_background_level3()
+            elif self.state == GameState.LEVEL_4:
+                self.draw_background_level4()
+            elif self.state == GameState.LEVEL_5:
+                self.draw_background_level5()
+            
+            # Draw level name
+            level_data = LEVEL_PLATFORMS.get(self.state, {})
+            level_name = level_data.get("name_zh" if self.language == "zh" else "name_en", "")
+            self.draw_text(level_name, self.font_medium, (139, 69, 19), 20, 20)
+            
+            # Draw platforms (world -> screen via camera)
+            for platform in self.current_platforms:
+                draw_x = platform["x"] - self.camera_x
+                # Skip drawing if off-screen
+                if draw_x + platform["w"] < 0 or draw_x > 1280:
+                    continue
+                # Shadow
+                shadow_rect = (draw_x + 4, platform["y"] + 6, platform["w"], platform["h"])
+                pygame.draw.rect(self.screen, (120, 90, 60), shadow_rect)
+                # Main platform
+                plat_rect = (draw_x, platform["y"], platform["w"], platform["h"])
+                pygame.draw.rect(self.screen, (205, 170, 110), plat_rect)
+                # Top highlight line
+                pygame.draw.line(self.screen, (255, 230, 180), (draw_x, platform["y"]), (draw_x + platform["w"], platform["y"]), 2)
+                # Border
+                pygame.draw.rect(self.screen, (120, 70, 30), plat_rect, 3)
+            
+            # Draw goal with glow effect (world -> screen)
+            gx = self.goal_x - self.camera_x
+            goal_color = (255, 215 + int(20 * (self.anim_offset / 60)), 0)
+            if -50 < gx < 1330:
+                pygame.draw.circle(self.screen, goal_color, (gx, self.goal_y - 30), 20)
+                pygame.draw.circle(self.screen, goal_color, (gx, self.goal_y - 30), 25, 2)
+            
+            # Draw player (world -> screen)
+            if self.player:
+                self.player.draw(self.screen, self.camera_x)
+            
+            # Draw message
+            if self.message_timer > 0 and self.message:
+                # Panel behind message for readability
+                msg_surf = self.font_small.render(self.message, True, (200, 100, 50))
+                msg_rect = msg_surf.get_rect(center=(640, 50))
+                panel = pygame.Surface((msg_rect.width + 20, msg_rect.height + 12), pygame.SRCALPHA)
+                panel.fill((10, 10, 10, 180))
+                self.screen.blit(panel, (msg_rect.x - 10, msg_rect.y - 6))
+                self.screen.blit(msg_surf, msg_rect)
+            
+            # Draw controls
+            self.draw_text("A/D or ← → : Move | SPACE/W/↑ : Jump | R : Restart | L : Language", 
+                          self.font_small, (100, 100, 100), 10, 680)
+        
+        elif self.state in self.story_messages:
+            # Story cutscene with background gradient
+            for y in range(0, 720):
+                shade = int(100 + (y / 720) * 50)
+                pygame.draw.line(self.screen, (shade, shade - 20, 200), (0, y), (1280, y))
+            
+            # Decorative butterflies
+            butterfly_x1 = 100 + int(50 * self.anim_offset / 60)
+            butterfly_x2 = 1180 - int(50 * self.anim_offset / 60)
+            self.draw_butterfly(butterfly_x1, 100)
+            self.draw_butterfly(butterfly_x2, 600)
+            
+            # Story messages
+            messages = self.story_messages[self.state].get(self.language, [])
+            y_pos = 200
+            for msg in messages:
+                self.draw_text(msg, self.font_medium, (255, 255, 255), 640, y_pos, center=True)
+                y_pos += 100
+            self.draw_text("Press SPACE to continue", self.font_small, (255, 200, 100), 640, 600, center=True)
+            
+            # Handle advancing story
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_SPACE]:
+                if not hasattr(self, 'space_pressed'):
+                    self.space_pressed = False
+                if not self.space_pressed:
+                    self.space_pressed = True
+                    self.advance_level()
+            else:
+                self.space_pressed = False
+        
+        elif self.state == GameState.ENDING:
+            # Magical ending background
+            for y in range(0, 720):
+                r = int(200 - (y / 720) * 100)
+                g = int(150 - (y / 720) * 50)
+                b = int(255 - (y / 720) * 100)
+                pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+            
+            # Draw multiple butterflies flying
+            for i in range(5):
+                bx = 200 + i * 250 + int(30 * (self.anim_offset / 60))
+                by = 500 - i * 100 - int(50 * (self.anim_offset / 60))
+                self.draw_butterfly(bx, by)
+            
+            # Text overlay
+            self.draw_text("永恒之爱", self.font_large, (255, 100, 100), 640, 150, center=True)
+            self.draw_text("Eternal Love", self.font_medium, (200, 150, 255), 640, 220, center=True)
+            self.draw_text("The spirits of Liang and Zhu", self.font_small, (255, 255, 255), 640, 320, center=True)
+            self.draw_text("transformed into butterflies", self.font_small, (255, 255, 255), 640, 360, center=True)
+            self.draw_text("united in eternal love", self.font_small, (255, 255, 255), 640, 400, center=True)
+            
+            self.draw_text("THE END", self.font_large, (255, 200, 100), 640, 600, center=True)
+            
+            # Play ending music on first render
+            if not hasattr(self, 'ending_music_played'):
+                self.sound_manager.play_music("ending")
+                self.ending_music_played = True
+        
+        pygame.display.flip()
+    
+    def draw_butterfly(self, x, y):
+        wing_offset = int(10 * abs(self.anim_offset - 30) / 30)
+        pygame.draw.circle(self.screen, (255, 200, 0), (x - 15 - wing_offset, y - 5), 12)
+        pygame.draw.circle(self.screen, (255, 200, 0), (x - 15 - wing_offset, y + 5), 10)
+        pygame.draw.circle(self.screen, (255, 200, 0), (x + 15 + wing_offset, y - 5), 12)
+        pygame.draw.circle(self.screen, (255, 200, 0), (x + 15 + wing_offset, y + 5), 10)
+        pygame.draw.circle(self.screen, (50, 50, 50), (x, y), 5)
+
+if __name__ == "__main__":
+    game = Game()
+    game.run()
