@@ -1,0 +1,2588 @@
+# game.py - Liang Shanbo and Zhu Yingtai Platformer Story Game
+import pygame
+import os
+import math
+import random
+from enum import Enum
+
+class GameState(Enum):
+    TITLE = 0             # 标题 - Title screen
+    BACKSTORY = 99        # 背景故事 - Backstory introduction
+    LEVEL_1 = 1           # 相遇之路 - Road to meeting (platform level)
+    STORY_1 = 10          # Story cutscene 1
+    LEVEL_2 = 2           # 书院三年 - Three years at academy
+    STORY_2 = 11          # Story cutscene 2
+    LEVEL_3 = 3           # 回家之路 - Journey home
+    STORY_3 = 12          # Story cutscene 3
+    STORY_3A = 15         # Story cutscene 3A - Goodbye at the road
+    STORY_3C = 17         # Story cutscene 3C - Months later truth reveal
+    STORY_3B = 16         # Story cutscene 3B - Argument with parents
+    LEVEL_4 = 4           # 追求之梦 - The pursuit
+    STORY_4 = 13          # Story cutscene 4
+    LEVEL_5 = 5           # 坟前诀别 - Zhu Yingtai leaps into the grave
+    STORY_5 = 14          # Story cutscene 5
+    LEVEL_6 = 6           # 化蝶升天 - Butterfly transformation
+    ENDING = 7            # 结局 - Ending
+
+# Music and sound effects configuration
+AUDIO_PATHS = {
+    "title": "assets/music/title.mp3",
+    "level_1": "assets/music/level1_road.mp3",
+    "level_2": "assets/music/level2_academy.mp3",
+    "level_3": "assets/music/level3_home.mp3",
+    "level_4": "assets/music/level4_pursuit.mp3",
+    "level_5": "assets/music/level4_pursuit.mp3",
+    "level_6": "assets/music/level5_butterfly.mp3",
+    "story": "assets/music/story_cutscene.mp3",
+    "ending": "assets/music/ending_butterfly.mp3",
+    "jump": "assets/sfx/jump.wav",
+    "goal": "assets/sfx/goal.wav",
+    "heartbreak": "assets/sfx/heartbreak.wav"
+}
+
+class SoundManager:
+    """Manages game music; SFX are intentionally disabled."""
+    def __init__(self):
+        pygame.mixer.init()
+        self.current_music = None
+        self.sounds = {}
+        self.music_volume = 0.7
+        self.sfx_volume = 0.5
+        self.load_sounds()
+    
+    def load_sounds(self):
+        """SFX disabled by request."""
+        self.sounds = {}
+    
+    def play_music(self, music_key, loops=-1):
+        """Play background music"""
+        if not music_key in AUDIO_PATHS:
+            return
+        
+        path = AUDIO_PATHS[music_key]
+        if not os.path.exists(path):
+            return
+        
+        try:
+            if self.current_music != music_key:
+                pygame.mixer.music.load(path)
+                pygame.mixer.music.set_volume(self.music_volume)
+                pygame.mixer.music.play(loops)
+                self.current_music = music_key
+        except:
+            pass
+    
+    def play_sound(self, sfx_key):
+        """SFX disabled by request."""
+        return
+    
+    def set_music_volume(self, volume):
+        """Set music volume (0.0 to 1.0)"""
+        self.music_volume = max(0.0, min(1.0, volume))
+        pygame.mixer.music.set_volume(self.music_volume)
+    
+    def set_sfx_volume(self, volume):
+        """Kept for compatibility; no active SFX."""
+        self.sfx_volume = max(0.0, min(1.0, volume))
+    
+    def stop_music(self):
+        """Stop background music"""
+        pygame.mixer.music.stop()
+        self.current_music = None
+
+
+
+# Level platform data
+LEVEL_PLATFORMS = {
+    GameState.LEVEL_1: {
+        "name_en": "From Home to Academy",
+        "name_zh": "去杭州读书",
+        "goal_x": 3470,
+        "goal_y": 600,
+        "start_x": 28,
+        "start_y": 560,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 180, "h": 120},
+            {"x": 220, "y": 560, "w": 170, "h": 20},
+            {"x": 430, "y": 520, "w": 170, "h": 20},
+            {"x": 640, "y": 500, "w": 160, "h": 20},
+            {"x": 860, "y": 540, "w": 160, "h": 20},
+            {"x": 1080, "y": 580, "w": 170, "h": 20},
+            {"x": 1320, "y": 560, "w": 140, "h": 20},
+            {"x": 1540, "y": 520, "w": 150, "h": 20},
+            {"x": 1760, "y": 500, "w": 150, "h": 20},
+            {"x": 1980, "y": 470, "w": 150, "h": 20},
+            {"x": 2200, "y": 430, "w": 150, "h": 20},
+            {"x": 2440, "y": 470, "w": 140, "h": 20},
+            {"x": 2660, "y": 520, "w": 150, "h": 20},
+            {"x": 2880, "y": 560, "w": 170, "h": 20},
+            {"x": 3120, "y": 590, "w": 160, "h": 20},
+            {"x": 3380, "y": 600, "w": 220, "h": 120},
+        ]
+    },
+
+    # Level 2: more vertical and denser jumps
+    GameState.LEVEL_2: {
+        "name_en": "Three Years at the Academy",
+        "name_zh": "同窗三年",
+        "goal_x": 3670,
+        "goal_y": 600,
+        "start_x": 28,
+        "start_y": 560,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 190, "y": 560, "w": 120, "h": 20},
+            {"x": 350, "y": 500, "w": 110, "h": 20},
+            {"x": 510, "y": 440, "w": 100, "h": 20},
+            {"x": 670, "y": 380, "w": 120, "h": 20},
+            {"x": 850, "y": 340, "w": 120, "h": 20},
+            {"x": 1030, "y": 400, "w": 120, "h": 20},
+            {"x": 1190, "y": 470, "w": 120, "h": 20},
+            {"x": 1350, "y": 540, "w": 110, "h": 20},
+            {"x": 1510, "y": 500, "w": 90, "h": 20},
+            {"x": 1680, "y": 430, "w": 110, "h": 20},
+            {"x": 1860, "y": 360, "w": 120, "h": 20},
+            {"x": 2050, "y": 300, "w": 120, "h": 20},
+            {"x": 2250, "y": 360, "w": 120, "h": 20},
+            {"x": 2430, "y": 430, "w": 130, "h": 20},
+            {"x": 2620, "y": 500, "w": 120, "h": 20},
+            {"x": 2810, "y": 560, "w": 130, "h": 20},
+            {"x": 3000, "y": 520, "w": 110, "h": 20},
+            {"x": 3180, "y": 470, "w": 110, "h": 20},
+            {"x": 3380, "y": 530, "w": 130, "h": 20},
+            {"x": 3650, "y": 600, "w": 120, "h": 120},
+        ]
+    },
+
+    # Level 3: broader rhythm with flowing up-down traversal
+    GameState.LEVEL_3: {
+        "name_en": "The Journey Home",
+        "name_zh": "回乡路上",
+        "goal_x": 3390,
+        "goal_y": 600,
+        "start_x": 28,
+        "start_y": 560,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 220, "y": 560, "w": 130, "h": 20},
+            {"x": 430, "y": 500, "w": 120, "h": 20},
+            {"x": 650, "y": 440, "w": 140, "h": 20},
+            {"x": 900, "y": 500, "w": 110, "h": 20},
+            {"x": 1140, "y": 560, "w": 120, "h": 20},
+            {"x": 1380, "y": 520, "w": 130, "h": 20},
+            {"x": 1610, "y": 460, "w": 130, "h": 20},
+            {"x": 1850, "y": 410, "w": 120, "h": 20},
+            {"x": 2100, "y": 350, "w": 130, "h": 20},
+            {"x": 2350, "y": 390, "w": 120, "h": 20},
+            {"x": 2580, "y": 450, "w": 130, "h": 20},
+            {"x": 2820, "y": 520, "w": 130, "h": 20},
+            {"x": 3060, "y": 570, "w": 140, "h": 20},
+            {"x": 3310, "y": 600, "w": 180, "h": 120},
+        ]
+    },
+
+    # Level 4: hardest route with tighter, staggered climbs
+    GameState.LEVEL_4: {
+        "name_en": "Desperate Pursuit",
+        "name_zh": "苦苦追寻",
+        "goal_x": 3425,
+        "goal_y": 600,
+        "start_x": 28,
+        "start_y": 560,
+        "platforms": [
+            {"x": 0, "y": 600, "w": 160, "h": 120},
+            {"x": 210, "y": 530, "w": 90, "h": 20},
+            {"x": 340, "y": 470, "w": 80, "h": 20},
+            {"x": 470, "y": 410, "w": 90, "h": 20},
+            {"x": 620, "y": 350, "w": 80, "h": 20},
+            {"x": 760, "y": 300, "w": 90, "h": 20},
+            {"x": 920, "y": 360, "w": 90, "h": 20},
+            {"x": 1080, "y": 430, "w": 90, "h": 20},
+            {"x": 1240, "y": 500, "w": 100, "h": 20},
+            {"x": 1410, "y": 450, "w": 80, "h": 20},
+            {"x": 1560, "y": 390, "w": 80, "h": 20},
+            {"x": 1710, "y": 330, "w": 90, "h": 20},
+            {"x": 1880, "y": 270, "w": 90, "h": 20},
+            {"x": 2050, "y": 320, "w": 85, "h": 20},
+            {"x": 2210, "y": 390, "w": 95, "h": 20},
+            {"x": 2390, "y": 460, "w": 100, "h": 20},
+            {"x": 2580, "y": 530, "w": 110, "h": 20},
+            {"x": 2780, "y": 480, "w": 85, "h": 20},
+            {"x": 2960, "y": 430, "w": 95, "h": 20},
+            {"x": 3150, "y": 500, "w": 110, "h": 20},
+            {"x": 3340, "y": 600, "w": 180, "h": 120},
+        ]
+    },
+
+    # Level 5: Zhu Yingtai's leap at Liang Shanbo's grave
+    GameState.LEVEL_5: {
+        "name_en": "Leap into the Grave",
+        "name_zh": "婚礼到墓前",
+        "goal_x": 3350,
+        "goal_y": 560,
+        "start_x": 32,
+        "start_y": 560,
+        "platforms": [
+            # Funeral sequence is a solemn walk to the grave (no platform jumps).
+            {"x": 0, "y": 600, "w": 3560, "h": 120},
+        ]
+    },
+
+    # Level 6: flight lane with cleaner left-right slalom pacing
+    GameState.LEVEL_6: {
+        "name_en": "Flight into the Sunset",
+        "name_zh": "化蝶飞天",
+        "goal_x": 3200,
+        "goal_y": 100,  # End of flight path
+        "start_x": 40,
+        "start_y": 560,
+        "platforms": [
+            # No platforms for Level 6 - it's a flying level.
+        ],
+        "willow_trees": [
+            {"x": 420, "y": 560, "w": 170, "h": 80},
+            {"x": 700, "y": 450, "w": 190, "h": 120},
+            {"x": 980, "y": 300, "w": 180, "h": 130},
+            {"x": 1260, "y": 440, "w": 200, "h": 120},
+            {"x": 1540, "y": 230, "w": 170, "h": 110},
+            {"x": 1820, "y": 360, "w": 210, "h": 120},
+            {"x": 2100, "y": 180, "w": 170, "h": 100},
+            {"x": 2380, "y": 420, "w": 190, "h": 110},
+            {"x": 2660, "y": 270, "w": 180, "h": 110},
+            {"x": 2940, "y": 150, "w": 170, "h": 95},
+        ]
+    }
+}
+
+PLAYABLE_LEVELS = (
+    GameState.LEVEL_1,
+    GameState.LEVEL_2,
+    GameState.LEVEL_3,
+    GameState.LEVEL_4,
+    GameState.LEVEL_5,
+    GameState.LEVEL_6,
+)
+
+STORY_STATES = (
+    GameState.BACKSTORY,
+    GameState.STORY_1,
+    GameState.STORY_2,
+    GameState.STORY_3,
+    GameState.STORY_3A,
+    GameState.STORY_3C,
+    GameState.STORY_3B,
+    GameState.STORY_4,
+    GameState.STORY_5,
+)
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self, x, y, flying_mode=False, outfit_mode="disguise", jump_enabled=True):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.width = 30
+        self.height = 40
+        self.vel_x = 0
+        self.vel_y = 0
+        self.on_ground = False
+        self.flying_mode = flying_mode  # True for Level 6 flying mechanic
+        self.outfit_mode = outfit_mode  # "disguise"/"revealed"/"wedding_red"/"liang_ill"
+        self.jump_enabled = jump_enabled
+        self.gravity = 0.7
+        self.jump_power = -13
+        # Smooth movement variables
+        self.speed = 5
+        self.max_speed = 7
+        # Movement tuning for more fluid control
+        self.accel = 0.9
+        self.ground_accel = 1.0    # per-frame horizontal acceleration on ground (tuned)
+        self.air_accel = 0.35      # per-frame horizontal acceleration in air (tuned)
+        self.ground_friction = 0.7 # stronger friction when stopping on ground (tuned)
+        self.brake_factor = 0.35   # instant braking when reversing direction (snappier)
+        self.friction = 0.9
+        # coyote time for forgiving jumps (frames)
+        self.coyote_time_max = 8
+        self.coyote_timer = 0
+        # jump buffer
+        self.jump_buffer_max = 6
+        self.jump_buffer = 0
+        # variable jump (cut jump short on release)
+        self.holding_jump = False
+        self.jump_cut_multiplier = 0.45
+        # Flying mode constants (Level 6)
+        self.flying_horizontal_speed = 8  # max horizontal speed when flying
+        self.flying_gravity = 0.42
+        self.flying_lift_accel = 1.05
+        self.flying_max_rise = -7.5
+        self.flying_max_fall = 7.5
+        # Sprite animation helpers
+        self.facing = 1
+        self.step_phase = 0.0
+    
+    def handle_input(self, keys):
+        # In flying mode, player can control horizontal movement
+        if self.flying_mode:
+            target_vx = 0
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+                target_vx = -self.flying_horizontal_speed
+            if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+                target_vx = self.flying_horizontal_speed
+            if target_vx != 0:
+                self.facing = 1 if target_vx > 0 else -1
+
+            dt = getattr(self, '_last_dt', 1/60)
+            dt_scale = dt * 60.0
+
+            # Smooth acceleration for flying
+            accel_amount = 0.8 * dt_scale
+            diff = target_vx - self.vel_x
+            if diff > 0:
+                self.vel_x += min(diff, accel_amount)
+            elif diff < 0:
+                self.vel_x += max(diff, -accel_amount)
+
+            # Clamp horizontal speed
+            if self.vel_x > self.flying_horizontal_speed:
+                self.vel_x = self.flying_horizontal_speed
+            if self.vel_x < -self.flying_horizontal_speed:
+                self.vel_x = -self.flying_horizontal_speed
+
+            # Space/W/Up gives lift; otherwise gravity in update pulls down.
+            fly_pressed = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+            if fly_pressed:
+                self.vel_y -= self.flying_lift_accel * dt_scale
+                if self.vel_y < self.flying_max_rise:
+                    self.vel_y = self.flying_max_rise
+            return
+        
+        # Normal platformer mode (Level 1-4)
+        # Determine desired horizontal direction
+        target_vx = 0
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            target_vx = -self.max_speed
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            target_vx = self.max_speed
+        if target_vx != 0:
+            self.facing = 1 if target_vx > 0 else -1
+
+        # Read last frame dt (seconds) stored by Game before calling input
+        dt = getattr(self, '_last_dt', 1/60)
+        dt_scale = dt * 60.0
+
+        # Smooth, responsive acceleration: different in air vs ground
+        accel_amount = (self.ground_accel if self.on_ground else self.air_accel) * dt_scale
+        diff = target_vx - self.vel_x
+        if diff > 0:
+            self.vel_x += min(diff, accel_amount)
+        elif diff < 0:
+            self.vel_x += max(diff, -accel_amount)
+
+        # Strong braking when reversing direction on ground (scale with dt)
+        if self.on_ground and target_vx != 0 and (self.vel_x * target_vx) < 0:
+            self.vel_x *= (self.brake_factor ** dt_scale)
+
+        # Apply friction when no input (ground only) using exponential decay
+        if target_vx == 0 and self.on_ground:
+            self.vel_x *= (self.ground_friction ** dt_scale)
+
+        # clamp horizontal speed
+        if self.vel_x > self.max_speed:
+            self.vel_x = self.max_speed
+        if self.vel_x < -self.max_speed:
+            self.vel_x = -self.max_speed
+
+        # Jump buffering and hold detection (for variable jump height)
+        if self.jump_enabled:
+            wants_jump = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+            if wants_jump:
+                self.jump_buffer = self.jump_buffer_max
+                self.holding_jump = True
+            else:
+                # Decrement buffer in dt-scaled "frames" so buffer time remains
+                # consistent across variable frame rates.
+                self.jump_buffer = max(0, self.jump_buffer - dt_scale)
+                self.holding_jump = False
+        else:
+            self.jump_buffer = 0
+            self.holding_jump = False
+    
+    def update(self, platforms, willow_trees=None):
+        # Read last frame dt (seconds)
+        dt = getattr(self, '_last_dt', 1/60)
+        dt_scale = dt * 60.0
+
+        # Flying mode uses separate gravity/lift physics.
+        if self.flying_mode:
+            self.vel_y += self.flying_gravity * dt_scale
+            if self.vel_y > self.flying_max_fall:
+                self.vel_y = self.flying_max_fall
+        else:
+            # Apply gravity scaled to keep feel consistent across frame rates
+            self.vel_y += self.gravity * dt_scale
+
+        # Update position (velocities are in per-frame-equivalent units)
+        self.x += self.vel_x
+        self.y += self.vel_y
+        
+        # Collision detection
+        # Update coyote timer
+        if self.on_ground:
+            self.coyote_timer = self.coyote_time_max
+        else:
+            self.coyote_timer = max(0, self.coyote_timer - dt_scale)
+
+        self.on_ground = False
+        player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        
+        # Handle willow tree collisions for flying mode
+        if self.flying_mode and willow_trees:
+            for tree in willow_trees:
+                tree_rect = pygame.Rect(tree["x"], tree["y"], tree["w"], tree["h"])
+                if player_rect.colliderect(tree_rect):
+                    # Bounce player away from tree (left or right depending on collision side)
+                    if player_rect.centerx < tree_rect.centerx:
+                        # Tree is to the right, push player left
+                        self.x = tree_rect.left - self.width - 5
+                        self.vel_x = -2
+                    else:
+                        # Tree is to the left, push player right
+                        self.x = tree_rect.right + 5
+                        self.vel_x = 2
+        
+        # Handle platform collisions for platformer mode
+        for platform in platforms:
+            plat_rect = pygame.Rect(platform["x"], platform["y"], platform["w"], platform["h"])
+            if player_rect.colliderect(plat_rect):
+                # Landing on platform from above
+                if self.vel_y > 0 and player_rect.bottom >= plat_rect.top and player_rect.centery < plat_rect.centery:
+                    self.y = plat_rect.top - self.height
+                    self.vel_y = 0
+                    self.on_ground = True
+                    self.coyote_timer = self.coyote_time_max
+
+        # Handle buffered jump (if buffer present and coyote time allows) - platformer only
+        if not self.flying_mode:
+            if self.jump_buffer > 0 and self.coyote_timer > 0:
+                # Apply jump impulse scaled similarly to per-frame tuning
+                self.vel_y = self.jump_power * dt_scale
+                self.on_ground = False
+                self.jump_buffer = 0
+                self.coyote_timer = 0
+            # Variable jump: if player released jump early while moving upward,
+            # reduce upward velocity so jumps feel snappier and more controllable.
+            if not self.holding_jump and self.vel_y < 0:
+                self.vel_y *= self.jump_cut_multiplier
+            # Lightweight walk animation state for sprite polish
+            if self.on_ground and abs(self.vel_x) > 0.25:
+                self.step_phase = (self.step_phase + 0.32 * dt_scale) % (math.tau)
+            else:
+                self.step_phase *= 0.8
+        
+        # Left screen/world boundary
+        if self.x < 0:
+            self.x = 0
+
+        # Keep flyer in the visible sky instead of drifting off-screen.
+        if self.flying_mode and self.y < 0:
+            self.y = 0
+            self.vel_y = max(0, self.vel_y)
+        
+        # Fall off screen (or reach goal)
+        if self.y > 720:
+            return False
+        return True
+    
+    def draw(self, screen, camera_x=0):
+        """Draw refined scholar/butterfly sprite with simple animation."""
+        body_x = int(self.x - camera_x)
+        body_y = int(self.y)
+        
+        # Draw butterfly sprite for the final flying level.
+        if self.flying_mode:
+            x, y = body_x, body_y
+            wing_flutter = int(4 * abs(pygame.time.get_ticks() % 320 - 160) / 160)
+            tilt = int(max(-6, min(6, self.vel_x)))
+            wing_span = 10 + wing_flutter
+
+            # Rear wings (darker layer)
+            pygame.draw.polygon(screen, (170, 70, 120), [(x - 1, y - 4), (x - wing_span - 8, y - 13), (x - wing_span - 9, y + 1)])
+            pygame.draw.polygon(screen, (170, 70, 120), [(x + 1, y - 4), (x + wing_span + 8, y - 13), (x + wing_span + 9, y + 1)])
+            # Front wings (highlight layer)
+            pygame.draw.polygon(screen, (235, 120, 170), [(x - 1, y - 2), (x - wing_span - 10, y - 10 + tilt), (x - wing_span - 12, y + 4)])
+            pygame.draw.polygon(screen, (235, 120, 170), [(x + 1, y - 2), (x + wing_span + 10, y - 10 - tilt), (x + wing_span + 12, y + 4)])
+            # Body and details
+            pygame.draw.ellipse(screen, (70, 35, 20), (x - 3, y - 10, 6, 18))
+            pygame.draw.circle(screen, (95, 50, 30), (x, y - 13), 3)
+            pygame.draw.line(screen, (95, 50, 30), (x - 1, y - 15), (x - 8, y - 19), 1)
+            pygame.draw.line(screen, (95, 50, 30), (x + 1, y - 15), (x + 8, y - 19), 1)
+            pygame.draw.circle(screen, (255, 170, 210), (x - wing_span - 4, y - 5), 2)
+            pygame.draw.circle(screen, (255, 170, 210), (x + wing_span + 4, y - 5), 2)
+            return
+
+        # Story sprite: disguise early, revealed later, and Liang's weak form in level 4.
+        direction = self.facing
+        walk = math.sin(self.step_phase)
+        leg_lift = int(2 * walk)
+        arm_swing = int(3 * walk)
+        slouch = 2 if self.outfit_mode == "liang_ill" else 0
+
+        if self.outfit_mode == "disguise":
+            robe_core = (55, 90, 165)
+            robe_outer = (80, 120, 195)
+            sash_color = (220, 90, 90)
+            sleeve_color = (90, 130, 200)
+            leg_color = (95, 80, 65)
+            hair_color = (35, 25, 20)
+            crown_color = (45, 35, 28)
+        elif self.outfit_mode == "liang_ill":
+            robe_core = (86, 92, 114)
+            robe_outer = (116, 122, 146)
+            sash_color = (170, 176, 194)
+            sleeve_color = (108, 114, 136)
+            leg_color = (90, 72, 64)
+            hair_color = (34, 24, 20)
+            crown_color = (56, 44, 38)
+        elif self.outfit_mode == "wedding_red":
+            robe_core = (176, 40, 48)
+            robe_outer = (216, 62, 70)
+            sash_color = (242, 196, 116)
+            sleeve_color = (194, 54, 62)
+            leg_color = (98, 72, 60)
+            hair_color = (45, 26, 20)
+            crown_color = (236, 186, 106)
+        else:
+            robe_core = (164, 94, 126)
+            robe_outer = (202, 136, 162)
+            sash_color = (236, 204, 168)
+            sleeve_color = (188, 120, 148)
+            leg_color = (110, 82, 74)
+            hair_color = (50, 30, 24)
+            crown_color = (214, 166, 108)
+
+        # Ground shadow
+        pygame.draw.ellipse(screen, (40, 30, 25), (body_x + 4, body_y + 36 + slouch, 24, 7))
+
+        # Robe layers
+        pygame.draw.rect(screen, robe_core, (body_x + 6, body_y + 15 + slouch, 18, 22))
+        pygame.draw.polygon(
+            screen,
+            robe_outer,
+            [(body_x + 6, body_y + 15 + slouch), (body_x + 24, body_y + 15 + slouch), (body_x + 27, body_y + 35 + slouch), (body_x + 3, body_y + 35 + slouch)],
+        )
+        pygame.draw.rect(screen, sash_color, (body_x + 6, body_y + 23 + slouch, 18, 4))
+        pygame.draw.line(screen, (235, 210, 180), (body_x + 9, body_y + 15 + slouch), (body_x + 20, body_y + 15 + slouch), 1)
+        if self.outfit_mode == "disguise":
+            # Scroll tucked at the waist to emphasize the study arc.
+            pygame.draw.rect(screen, (234, 222, 182), (body_x + 19, body_y + 25 + slouch, 5, 8))
+            pygame.draw.line(screen, (146, 118, 86), (body_x + 19, body_y + 28 + slouch), (body_x + 24, body_y + 28 + slouch), 1)
+        elif self.outfit_mode == "liang_ill":
+            # Pale sash marker to make the level 4 state read as weakened.
+            pygame.draw.line(screen, (196, 204, 220), (body_x + 8, body_y + 26 + slouch), (body_x + 22, body_y + 26 + slouch), 2)
+        elif self.outfit_mode == "wedding_red":
+            # Wedding sash knot and hem ornament.
+            pygame.draw.circle(screen, (248, 212, 126), (body_x + 15, body_y + 25 + slouch), 3)
+            pygame.draw.circle(screen, (236, 176, 92), (body_x + 15, body_y + 33 + slouch), 2)
+
+        # Sleeves and arms
+        left_arm_end = (body_x + 1, body_y + 19 + arm_swing + slouch)
+        right_arm_end = (body_x + 29, body_y + 19 - arm_swing + slouch)
+        pygame.draw.line(screen, sleeve_color, (body_x + 6, body_y + 20 + slouch), left_arm_end, 4)
+        pygame.draw.line(screen, sleeve_color, (body_x + 24, body_y + 20 + slouch), right_arm_end, 4)
+        pygame.draw.circle(screen, (240, 200, 160), left_arm_end, 2)
+        pygame.draw.circle(screen, (240, 200, 160), right_arm_end, 2)
+
+        # Head and hair
+        head_center = (body_x + 14, body_y + 10) if self.outfit_mode == "liang_ill" else (body_x + 15, body_y + 8)
+        pygame.draw.circle(screen, (240, 200, 160), head_center, 6)
+        if self.outfit_mode == "disguise":
+            pygame.draw.ellipse(screen, hair_color, (body_x + 7, body_y - 1, 16, 7))
+            pygame.draw.rect(screen, crown_color, (body_x + 9, body_y - 4, 12, 3))
+        elif self.outfit_mode == "liang_ill":
+            pygame.draw.ellipse(screen, hair_color, (body_x + 6, body_y + 0, 16, 7))
+            pygame.draw.rect(screen, crown_color, (body_x + 9, body_y - 3, 11, 3))
+        elif self.outfit_mode == "wedding_red":
+            pygame.draw.ellipse(screen, hair_color, (body_x + 6, body_y - 2, 18, 8))
+            pygame.draw.rect(screen, crown_color, (body_x + 8, body_y - 4, 14, 3))
+            pygame.draw.polygon(screen, (212, 56, 68), [(body_x + 5, body_y + 2), (body_x + 25, body_y + 2), (body_x + 22, body_y + 14), (body_x + 8, body_y + 14)])
+            pygame.draw.circle(screen, (248, 214, 130), (body_x + 15, body_y + 0), 2)
+        else:
+            pygame.draw.ellipse(screen, hair_color, (body_x + 6, body_y - 2, 18, 9))
+            pygame.draw.polygon(screen, hair_color, [(body_x + 8, body_y + 2), (body_x + 22, body_y + 2), (body_x + 20, body_y + 14), (body_x + 10, body_y + 14)])
+            pygame.draw.circle(screen, crown_color, (body_x + 15, body_y + 1), 3)
+            pygame.draw.line(screen, hair_color, (body_x + 10, body_y + 13), (body_x + 10, body_y + 30), 2)
+            pygame.draw.line(screen, hair_color, (body_x + 20, body_y + 13), (body_x + 20, body_y + 30), 2)
+        eye_y = body_y + 10 if self.outfit_mode == "liang_ill" else body_y + 8
+        eye_x = body_x + (16 if direction > 0 else 12) if self.outfit_mode == "liang_ill" else body_x + (17 if direction > 0 else 13)
+        pygame.draw.circle(screen, (25, 20, 18), (eye_x, eye_y), 1)
+        pygame.draw.line(screen, (175, 95, 70), (body_x + 11, body_y + 13), (body_x + 17, body_y + 13), 1)
+
+        # Legs
+        pygame.draw.line(screen, leg_color, (body_x + 11, body_y + 35 + slouch), (body_x + 10, body_y + 41 - leg_lift + slouch), 3)
+        pygame.draw.line(screen, leg_color, (body_x + 19, body_y + 35 + slouch), (body_x + 20, body_y + 41 + leg_lift + slouch), 3)
+
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1280, 720))
+        pygame.display.set_caption("梁山伯与祝英台 - Liang Shanbo & Zhu Yingtai")
+        self.clock = pygame.time.Clock()
+        self.state = GameState.TITLE
+        self.running = True
+        # Camera and world sizing for longer levels
+        self.camera_x = 0
+        self.world_width = 1280
+        
+        # Load fonts
+        # Use a font that supports Chinese if available
+        self.font_large = self.get_font(56)
+        self.font_medium = self.get_font(36)
+        self.font_small = self.get_font(24)
+        self.font_tiny = self.get_font(18)
+        
+        # Initialize sound manager
+        self.sound_manager = SoundManager()
+        
+        # Volume slider state
+        self.volume_slider_active = None  # "music" or "sfx" or None
+        self.music_slider_rect = pygame.Rect(500, 100, 200, 20)
+        self.sfx_slider_rect = pygame.Rect(500, 150, 200, 20)
+        
+        # Player and level data
+        self.player = None
+        self.current_platforms = []
+        self.current_willow_trees = []
+        self.goal_x = 0
+        self.goal_y = 600
+        self.anim_offset = 0
+        self.level_complete = False
+        self.level_complete_timer = 0
+        self.message = ""
+        self.message_timer = 0
+        self.pursuit_grief = 0
+        self.jump_pressed = False  # Prevent multiple jumps
+        self.title_music_played = False
+        self.ending_music_played = False
+
+        # Flappy-style ending mini-game state
+        self.ending_state = "intro"  # intro / playing / crashed / complete
+        self.ending_butterfly_x = 320
+        self.ending_butterfly_y = 360.0
+        self.ending_butterfly_vel = 0.0
+        self.ending_butterfly_tilt = 0.0
+        self.ending_scroll = 0.0
+        self.ending_obstacles = []
+        self.ending_spawn_timer = 0
+        self.ending_score = 0
+        self.ending_target_score = 10
+        self.ending_retry_cooldown = 0
+        self.liang_follow = {"active": False, "x": 0.0, "y": 620.0, "vx": 0.0}
+        self.story_scene_timer = 0
+        
+        # Story messages for cutscenes
+        self.story_messages = {
+            GameState.BACKSTORY: {
+                "en": ["In the mystical lands of ancient China, a tragic love story unfolds.", "Two souls, separated by tradition and duty, are bound by an eternal connection.", "Their journey spans five trials: meeting, learning, parting, pursuing, and transcendence.", "Watch as a young scholar discovers that love can transform even death itself.", "This is the legend of Liang Shanbo and Zhu Yingtai..."],
+                "zh": ["这是梁山伯和祝英台的故事。", "他们想在一起，却被礼法挡住。", "", "", ""]
+            },
+            GameState.STORY_1: {
+                "en": ["Zhu Yingtai leaves her family home to pursue her dreams.", "Bound by tradition, she must disguise herself as a boy.", "The long journey to the academy awaits her.", "She climbs pathways, crosses valleys, approaching the distant school.", "Finally, she arrives at the academy gates, ready to study."],
+                "zh": ["祝英台想去读书。", "她只能女扮男装。", "路很远，但她没有停。", "她翻山过桥，一直向前。", "她终于到了杭州。"]
+            },
+            GameState.STORY_2: {
+                "en": ["Three wonderful years pass at the academy.", "Liang Shanbo and Zhu Yingtai study together, share meals,", "and grow ever closer. Their bond deepens with each passing day.", "Liang Shanbo falls deeply in love, but is unaware of her true identity.", "He sees only the brilliant scholar and devoted friend he cares for most."],
+                "zh": ["在书院，他们同窗三年。", "吟诗作画、观鸟赏花。", "两人越来越亲近。", "梁山伯还不知道真相。", "他只知道她很重要。"]
+            },
+            GameState.STORY_3: {
+                "en": ["When her father calls, Zhu Yingtai must return home.", "Devastated, Liang Shanbo accompanies her on the journey.", "As they approach her family estate, Zhu Yingtai finally reveals the truth.", "She is not the boy he befriended, but a young woman all along.", "The shock breaks Liang Shanbo's heart in ways he cannot bear."],
+                "zh": ["祝英台要回家了。", "梁山伯送她一程。", "两人在家门前停下。", "梁山伯看着她进门。", "他只好转身离开。"]
+            },
+            GameState.STORY_3A: {
+                "en": ["At the crossroads, they must part.", "Liang Shanbo cannot bear to leave.", "Zhu Yingtai is equally heartbroken.", "They promise to meet again.", "But this farewell lasts too long."],
+                "zh": ["两人在路口停下。", "梁山伯不想分开。", "祝英台也很难过。", "他们约好以后再见。", "这一别很长。"]
+            },
+            GameState.STORY_3C: {
+                "en": ["Months later, a message reaches Liang Shanbo.", "He finally learns Zhu Yingtai is a woman.", "The truth cuts through his heart all at once.", "He wants to return to her immediately.", "But he hears that a marriage agreement has already been made."],
+                "zh": ["几个月后，梁山伯才知道真相。", "祝英台其实是女子。", "他想马上回去见她。", "可他听说婚约已经定下。", "他的心一下沉了下去。"]
+            },
+            GameState.STORY_3B: {
+                "en": ["Back home, her parents demand marriage at once.", "Zhu Yingtai refuses and argues fiercely.", "Her parents insist the rules cannot change.", "The argument grows louder and harder.", "In the end, she is forced to agree."],
+                "zh": ["回家后，父母要她马上成亲。", "祝英台说她不愿意。", "父母说礼法不能改。", "他们大吵了一场。", "最后她被迫答应。"]
+            },
+            GameState.STORY_4: {
+                "en": ["Upon returning home, Zhu Yingtai is promised in marriage to another.", "Learning of this, Liang Shanbo is consumed by despair and longing.", "His grief overwhelms his spirit, and he falls gravely ill.", "He calls out her name with his dying breath, his heart finally breaking.", "Yet their love transcends death itself, bringing a miraculous transformation."],
+                "zh": ["梁山伯知道婚事后很痛苦。", "他去找英台，却来晚了。", "他心病越来越重。", "他在床前喊着英台。", "随后梁山伯去世了。"]
+            },
+            GameState.STORY_5: {
+                "en": ["On the wedding day, drums thunder as Zhu Yingtai passes Liang Shanbo's tomb.", "She kneels before the grave, refusing a life without him.", "A crack opens in the earth as wind tears through the sky.", "Without hesitation, she leaps into the grave to reunite in death.", "From grief and devotion, two butterflies rise together."],
+                "zh": ["婚礼当天，人很多很热闹。", "祝英台经过梁山伯的墓。", "她跪在墓前大哭。", "墓裂开，她跳了下去。", "两只蝴蝶飞了出来。"]
+            },
+        }
+        self.level_story_prompts = {
+            GameState.LEVEL_1: "去杭州读书",
+            GameState.LEVEL_2: "同窗三年",
+            GameState.LEVEL_3: "回乡路上",
+            GameState.LEVEL_4: "苦苦追寻",
+            GameState.LEVEL_5: "婚礼到墓前",
+            GameState.LEVEL_6: "化蝶飞天",
+        }
+        self.level_complete_messages = {
+            GameState.LEVEL_1: "到书院了。",
+            GameState.LEVEL_2: "三年一眨眼过去了。",
+            GameState.LEVEL_3: "回家了。",
+            GameState.LEVEL_4: "梁山伯倒下了。",
+            GameState.LEVEL_5: "她跳入墓中。",
+            GameState.LEVEL_6: "他们化蝶了。",
+        }
+    
+    def run(self):
+        while self.running:
+            # Compute delta-time (seconds) and store on the player so
+            # Player methods can scale accelerations consistently.
+            dt = self.clock.tick(60) / 1000.0
+            if self.player:
+                self.player._last_dt = dt
+
+            self.handle_input()
+
+            if self.player:
+                self.player._last_dt = dt
+            self.update()
+            self.render()
+        pygame.quit()
+
+    def get_font(self, size):
+        """Try to find a font that supports Chinese characters.
+        Checks common system fonts first, then looks in assets/fonts.
+        Falls back to default font if nothing found."""
+        # macOS system font paths for CJK support
+        macos_font_paths = [
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/Library/Fonts/STHeiti Medium.ttc",
+            "/Library/Fonts/STHeiti Light.ttc",
+        ]
+        
+        # Try macOS system font paths first (most reliable)
+        for path in macos_font_paths:
+            try:
+                if os.path.exists(path):
+                    return pygame.font.Font(path, size)
+            except Exception:
+                continue
+        
+        # Fallback font candidates by name (SysFont)
+        candidates = [
+            "STHeiti", "ST Heiti", "PingFang SC", "Hiragino Sans GB",
+            "Noto Sans CJK SC", "Noto Sans CJK", "SimHei",
+            "Heiti SC", "Microsoft YaHei", "Arial Unicode MS"
+        ]
+        
+        for name in candidates:
+            try:
+                path = pygame.font.match_font(name)
+                if path:
+                    return pygame.font.Font(path, size)
+            except Exception:
+                continue
+
+        # Look for bundled fonts in assets/fonts
+        try:
+            base_dir = os.path.dirname(__file__)
+        except NameError:
+            base_dir = os.getcwd()
+        fonts_dir = os.path.join(base_dir, "assets", "fonts")
+        if os.path.isdir(fonts_dir):
+            for fname in os.listdir(fonts_dir):
+                if fname.lower().endswith((".ttf", ".ttc", ".otf")):
+                    try:
+                        return pygame.font.Font(os.path.join(fonts_dir, fname), size)
+                    except Exception:
+                        continue
+
+        # Last resort: default font (may not render Chinese)
+        try:
+            return pygame.font.Font(None, size)
+        except Exception:
+            return pygame.font.SysFont(None, size)
+    
+    def handle_input(self):
+        keys = pygame.key.get_pressed()
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # Jump key tracking for sound
+        current_jump = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+        
+        # Update volume sliders if being dragged
+        if self.volume_slider_active:
+            # Calculate percentage based on mouse X position
+            slider_rect = self.music_slider_rect
+            percent = max(0, min(1, (mouse_pos[0] - slider_rect.left) / slider_rect.width))
+            self.sound_manager.set_music_volume(percent)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # Handle volume slider clicks
+                if event.button == 1:  # Left click
+                    if self.music_slider_rect.collidepoint(mouse_pos):
+                        self.volume_slider_active = "music"
+                        # Update volume immediately on click
+                        percent = max(0, min(1, (mouse_pos[0] - self.music_slider_rect.left) / self.music_slider_rect.width))
+                        self.sound_manager.set_music_volume(percent)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    self.volume_slider_active = None
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    if self.state == GameState.ENDING:
+                        self.reset_ending_flappy()
+                    else:
+                        self.reset_level()
+                elif event.key == pygame.K_SPACE:
+                    if self.state == GameState.ENDING:
+                        self.handle_ending_flap()
+                    elif self.state == GameState.LEVEL_6:
+                        # Space controls active lift in the final flight level.
+                        self.sound_manager.play_sound("jump")
+                    # Start from title
+                    elif self.state == GameState.TITLE:
+                        self.state = GameState.BACKSTORY
+                        self.story_scene_timer = 0
+                    # If the level is marked complete, advance on SPACE
+                    elif self.level_complete and self.state in PLAYABLE_LEVELS:
+                        self.advance_level()
+                    # During story screens allow advancing
+                    elif self.state in STORY_STATES:
+                        self.advance_level()
+
+                    # Play jump SFX when initiating a jump from ground
+                    if self.player and self.player.on_ground and self.state in PLAYABLE_LEVELS and self.state not in (GameState.LEVEL_5, GameState.LEVEL_6):
+                        self.sound_manager.play_sound("jump")
+        
+        # Player input for platformer levels
+        if self.player and self.state in PLAYABLE_LEVELS:
+            self.player.handle_input(keys)
+            # play jump SFX when leaving ground (simple detection)
+            if current_jump and self.player.on_ground and not self.jump_pressed and self.state not in (GameState.LEVEL_5, GameState.LEVEL_6):
+                self.sound_manager.play_sound("jump")
+                self.jump_pressed = True
+            elif not current_jump:
+                self.jump_pressed = False
+    
+    def start_level(self):
+        level_key = self.state
+        if level_key in LEVEL_PLATFORMS:
+            level_data = LEVEL_PLATFORMS[level_key]
+            self.current_platforms = level_data["platforms"]
+            self.goal_x = level_data.get("goal_x", 1200)
+            self.goal_y = level_data.get("goal_y", 600)
+            start_x = level_data.get("start_x", 50)
+            start_y = level_data.get("start_y", 560)
+            
+            # Level 6 is flying mode
+            flying_mode = (level_key == GameState.LEVEL_6)
+            outfit_mode_map = {
+                GameState.LEVEL_1: "disguise",
+                GameState.LEVEL_2: "disguise",
+                GameState.LEVEL_3: "disguise",
+                GameState.LEVEL_4: "liang_ill",
+                GameState.LEVEL_5: "wedding_red",
+                GameState.LEVEL_6: "revealed",
+            }
+            outfit_mode = outfit_mode_map.get(level_key, "disguise")
+            jump_enabled = (level_key != GameState.LEVEL_5)
+            self.player = Player(
+                start_x,
+                start_y,
+                flying_mode=flying_mode,
+                outfit_mode=outfit_mode,
+                jump_enabled=jump_enabled,
+            )
+
+            # Liang follows during academy and departure levels.
+            if level_key in (GameState.LEVEL_2, GameState.LEVEL_3):
+                self.liang_follow["active"] = True
+                self.liang_follow["x"] = float(max(20, start_x - 120))
+                self.liang_follow["y"] = float(start_y + 40)
+                self.liang_follow["vx"] = 0.0
+            else:
+                self.liang_follow["active"] = False
+            
+            # Load special flight obstacles when present (Level 6)
+            self.current_willow_trees = level_data.get("willow_trees", [])
+            
+            self.level_complete = False
+            self.level_complete_timer = 0
+            self.message = ""
+            self.message_timer = 0
+            if level_key == GameState.LEVEL_5:
+                self.message = "送亲路：只用左右走到墓前。"
+                self.message_timer = 220
+            elif level_key == GameState.LEVEL_4:
+                self.pursuit_grief = 0
+                self.message = "他一直追，但追不上。"
+                self.message_timer = 180
+            elif level_key == GameState.LEVEL_6:
+                self.message = "化蝶：按空格上升，避开柳枝。"
+                self.message_timer = 220
+            
+            # Play appropriate level music
+            music_map = {
+                GameState.LEVEL_1: "level_1",
+                GameState.LEVEL_2: "level_2",
+                GameState.LEVEL_3: "level_3",
+                GameState.LEVEL_4: "level_4",
+                GameState.LEVEL_5: "level_5",
+                GameState.LEVEL_6: "level_6"
+            }
+            if level_key in music_map:
+                self.sound_manager.play_music(music_map[level_key], loops=-1)  # Loop music continuously
+            # calculate world width from platforms and goal
+            max_x = self.goal_x
+            for p in self.current_platforms:
+                max_x = max(max_x, p.get("x", 0) + p.get("w", 0))
+            # For flying mode, also consider willow tree positions
+            for tree in self.current_willow_trees:
+                max_x = max(max_x, tree.get("x", 0) + tree.get("w", 0))
+            self.world_width = max(1280, max_x + 200)
+            # reset camera
+            self.camera_x = 0
+    
+    def reset_level(self):
+        if self.state in LEVEL_PLATFORMS:
+            self.start_level()
+        elif self.state == GameState.ENDING:
+            self.reset_ending_flappy()
+    
+    def update(self):
+        self.anim_offset = (self.anim_offset + 1) % 60
+        self.message_timer = max(0, self.message_timer - 1)
+        if self.state in STORY_STATES:
+            self.story_scene_timer += 1
+        else:
+            self.story_scene_timer = 0
+        
+        # Update platformer level
+        if self.player and self.state in PLAYABLE_LEVELS:
+            if self.level_complete:
+                if self.level_complete_timer > 0:
+                    self.level_complete_timer -= 1
+                if self.level_complete_timer == 0:
+                    self.advance_level()
+                return
+
+            if not self.player.update(self.current_platforms, getattr(self, 'current_willow_trees', [])):
+                self.sound_manager.play_sound("heartbreak")
+                self.reset_level()
+                self.message = "掉下去了，按 R 重试。"
+                self.message_timer = 120
+                return
+
+            self.update_liang_follow()
+
+            # Level 4 is intentionally unwinnable: grief builds until Liang collapses.
+            if self.state == GameState.LEVEL_4 and not self.level_complete:
+                self.pursuit_grief += 1
+                progress = self.player.x / max(1, self.goal_x)
+                self.pursuit_grief = max(self.pursuit_grief, int(progress * 760))
+                if self.pursuit_grief > 360 and self.message_timer == 0:
+                    self.message = "他追不动了……"
+                    self.message_timer = 90
+                if self.pursuit_grief > 700 or self.player.x >= self.goal_x - 260:
+                    self.level_complete = True
+                    self.level_complete_timer = 130
+                    self.message = "梁山伯心碎倒下。"
+                    self.message_timer = 130
+            
+            # Check if reached goal (special handling for grave leap and butterfly ascent)
+            player_rect = pygame.Rect(self.player.x, self.player.y, self.player.width, self.player.height)
+            if self.state != GameState.LEVEL_4:
+                if self.state == GameState.LEVEL_6:
+                    # For Level 6, goal is in the heavens (above screen)
+                    goal_rect = pygame.Rect(self.goal_x - 80, self.goal_y - 80, 160, 160)
+                elif self.state == GameState.LEVEL_5:
+                    # For Level 5, goal is leaping into the opened grave
+                    goal_rect = pygame.Rect(self.goal_x - 70, self.goal_y - 40, 140, 140)
+                else:
+                    goal_rect = pygame.Rect(self.goal_x - 20, self.goal_y - 20, 40, 100)
+                if player_rect.colliderect(goal_rect):
+                    if not self.level_complete:
+                        self.level_complete = True
+                        self.level_complete_timer = 120
+                        self.sound_manager.play_sound("goal")
+                        self.message = self.level_complete_messages.get(self.state, "过关了，按空格继续。")
+                        self.message_timer = 140
+            # Update camera to follow player (centered) with vertical focus
+            # For Level 6, emphasize vertical movement
+            target_cam = int(self.player.x - (1280 // 2))
+            if self.state == GameState.LEVEL_6:
+                # Center on player more aggressively
+                target_cam = max(0, int(self.player.x - 640))
+            max_cam = max(0, self.world_width - 1280)
+            self.camera_x = max(0, min(target_cam, max_cam))
+        elif self.state == GameState.ENDING:
+            self.update_ending_flappy()
+    
+    def advance_level(self):
+        state_order = [
+            GameState.BACKSTORY,
+            GameState.LEVEL_1, GameState.STORY_1,
+            GameState.LEVEL_2, GameState.STORY_2,
+            GameState.LEVEL_3, GameState.STORY_3, GameState.STORY_3A, GameState.STORY_3C, GameState.STORY_3B,
+            GameState.LEVEL_4, GameState.STORY_4,
+            GameState.LEVEL_5, GameState.STORY_5,
+            GameState.LEVEL_6, GameState.ENDING
+        ]
+        
+        # Music mapping for story cutscenes (each story uses corresponding level's music)
+        story_music_map = {
+            GameState.BACKSTORY: "title",
+            GameState.STORY_1: "level_1",
+            GameState.STORY_2: "level_2",
+            GameState.STORY_3: "level_3",
+            GameState.STORY_3A: "level_3",
+            GameState.STORY_3C: "level_3",
+            GameState.STORY_3B: "level_4",
+            GameState.STORY_4: "level_4",
+            GameState.STORY_5: "level_5"
+        }
+        
+        try:
+            current_idx = state_order.index(self.state)
+            if current_idx < len(state_order) - 1:
+                self.state = state_order[current_idx + 1]
+                self.story_scene_timer = 0
+                if self.state in PLAYABLE_LEVELS:
+                    self.start_level()
+                    self.ending_music_played = False
+                elif self.state in STORY_STATES:
+                    # Play appropriate music for story segment
+                    if self.state in story_music_map:
+                        self.sound_manager.play_music(story_music_map[self.state])
+                elif self.state == GameState.ENDING:
+                    self.player = None
+                    self.camera_x = 0
+                    self.world_width = 1280
+                    self.reset_ending_flappy()
+                    self.sound_manager.play_music("ending", loops=-1)
+                    self.ending_music_played = True
+        except ValueError:
+            pass
+    
+    def draw_background_level1(self):
+        """Draw scenic road from home to academy with detailed buildings"""
+        # Gradient sky from golden morning to blue
+        for y in range(0, 400):
+            t = y / 400.0
+            r = int(255 - t * 50)
+            g = int(200 - t * 30)
+            b = int(100 + t * 100)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Distant mountains with layers
+        pygame.draw.polygon(self.screen, (80, 80, 120), [(0, 350), (300, 150), (600, 350)])
+        pygame.draw.polygon(self.screen, (100, 100, 140), [(400, 350), (800, 80), (1200, 350)])
+        pygame.draw.polygon(self.screen, (120, 120, 160), [(900, 350), (1280, 200), (1280, 350)])
+        
+        # Sun rising
+        sun_x = 200 + int(100 * (self.anim_offset / 60))
+        pygame.draw.circle(self.screen, (255, 220, 100), (sun_x, 120), 60)
+        pygame.draw.circle(self.screen, (255, 240, 150), (sun_x, 120), 50)
+        
+        # Dust/mist effect
+        for i in range(10):
+            mist_x = (i * 150 + self.anim_offset) % 1280
+            pygame.draw.ellipse(self.screen, (200, 190, 160, 80), (mist_x, 300, 200, 50))
+        
+        # START: Zhu Yingtai's home (at left edge)
+        home_x = int(-self.camera_x)
+        if -200 < home_x < 1280:
+            self.draw_eastern_jin_hall(
+                home_x - 8, 454, 196, 176,
+                wall_color=(214, 205, 187),
+                wood_color=(106, 67, 42),
+                roof_color=(86, 62, 42),
+                lanterns=True
+            )
+        
+        # END: Academy main building (at far right)
+        acad_x = int(3700 - self.camera_x)
+        if -400 < acad_x < 1280:
+            self.draw_eastern_jin_hall(
+                acad_x, 362, 300, 258,
+                wall_color=(207, 199, 182),
+                wood_color=(104, 66, 41),
+                roof_color=(78, 54, 36),
+                lanterns=True
+            )
+            self.draw_eastern_jin_gatehouse(acad_x - 34, 452, 368, 168)
+        
+        # Road curving through world
+        road_color = (200, 180, 140)
+        for x in range(-500, self.world_width, 120):
+            x_screen = x - self.camera_x
+            y_offset = int(30 * (x / self.world_width))
+            pygame.draw.rect(self.screen, road_color, (x_screen, 590 + y_offset, 120, 50))
+            # Road markings
+            pygame.draw.line(self.screen, (150, 130, 80), (x_screen, 615 + y_offset), (x_screen + 120, 615 + y_offset), 2)
+
+        # Foreground environment details (trees, rocks, bamboo)
+        for wx in range(180, self.world_width + 200, 360):
+            sx = int(wx - self.camera_x)
+            if -140 < sx < 1420:
+                self.draw_tree_cluster(sx, ground_y=618, scale=0.9, mood="lush")
+        for wx in range(70, self.world_width + 200, 300):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 632, scale=0.95, tone="warm")
+    
+    def draw_background_level2(self):
+        """Draw academy courtyard with detailed buildings and scholar's life"""
+        # Soft scholarly sky
+        for y in range(0, 400):
+            t = y / 400.0
+            r = int(200 - t * 60)
+            g = int(220 - t * 50)
+            b = int(255 - t * 30)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Large academy complex buildings on sides
+        # Left building
+        left_bldg = int(-self.camera_x + 100)
+        self.draw_eastern_jin_hall(
+            left_bldg, 228, 220, 224,
+            wall_color=(208, 198, 180),
+            wood_color=(96, 60, 36),
+            roof_color=(75, 52, 35)
+        )
+        
+        # Right building (dormitory)
+        right_bldg = int(1000 - self.camera_x)
+        self.draw_eastern_jin_hall(
+            right_bldg, 258, 200, 194,
+            wall_color=(205, 192, 174),
+            wood_color=(102, 66, 40),
+            roof_color=(82, 56, 38)
+        )
+        
+        # START: Academy gates (left spawn area)
+        gate_x = int(-self.camera_x + 20)
+        if -150 < gate_x < 1280:
+            self.draw_eastern_jin_gatehouse(gate_x, 454, 180, 166)
+        
+        # END: Central pavilion (goal area)
+        pavilion_x = int(3670 - self.camera_x)
+        if -300 < pavilion_x < 1280:
+            self.draw_eastern_jin_hall(
+                pavilion_x, 430, 200, 190,
+                wall_color=(212, 201, 184),
+                wood_color=(108, 68, 40),
+                roof_color=(84, 58, 37),
+                lanterns=True
+            )
+            self.draw_text("心", self.font_large, (255, 200, 100), pavilion_x + 100, 500, center=True)
+        
+        # Courtyard ground patterns
+        for x in range(-500, self.world_width, 200):
+            x_screen = x - self.camera_x
+            if -100 < x_screen < 1380:
+                pygame.draw.circle(self.screen, (180, 160, 140), (x_screen, 620), 15)
+
+        # Courtyard nature details
+        for wx in range(120, self.world_width + 180, 330):
+            sx = int(wx - self.camera_x)
+            if -130 < sx < 1410:
+                self.draw_bamboo_cluster(sx, ground_y=620, stalks=4, height=92, tone="green")
+        for wx in range(40, self.world_width + 120, 260):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 634, scale=0.8, tone="warm")
+
+    def draw_background_level3(self):
+        """Draw mountain journey home with detailed landmarks"""
+        # Warm sky at day's end
+        for y in range(0, 400):
+            t = y / 400.0
+            r = int(220 - t * 40)
+            g = int(200 - t * 30)
+            b = int(180 + t * 50)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Clouds with golden light
+        clouds = [(150, 100), (450, 120), (850, 80), (1100, 140)]
+        for cx, cy in clouds:
+            c_x = int(cx - self.camera_x / 2)
+            if -100 < c_x < 1380:
+                pygame.draw.circle(self.screen, (255, 255, 200), (c_x, cy), 35)
+                pygame.draw.circle(self.screen, (255, 255, 200), (c_x + 50, cy + 15), 30)
+        
+        # Distant mountains (layered for depth)
+        pygame.draw.polygon(self.screen, (100, 130, 90), [(0, 350), (250, 150), (500, 350)])
+        pygame.draw.polygon(self.screen, (120, 150, 110), [(350, 350), (750, 50), (1150, 350)])
+        pygame.draw.polygon(self.screen, (140, 170, 130), [(900, 350), (1280, 200), (1280, 350)])
+        
+        # START: Academy exit (departure point)
+        exit_x = int(-self.camera_x)
+        if -300 < exit_x < 1280:
+            self.draw_eastern_jin_gatehouse(exit_x - 12, 450, 174, 170)
+        
+        # END: Home building (destination)
+        home_x = int(3370 - self.camera_x)
+        if -250 < home_x < 1280:
+            self.draw_eastern_jin_hall(
+                home_x, 430, 200, 190,
+                wall_color=(216, 206, 187),
+                wood_color=(109, 69, 44),
+                roof_color=(88, 62, 42),
+                lanterns=True
+            )
+        
+        # Mountain path
+        for x in range(-200, self.world_width, 300):
+            x_screen = x - self.camera_x
+            y_offset = int(50 * (x / 3000.0))
+            pygame.draw.polygon(self.screen, (160, 140, 100), 
+                              [(x_screen, 610), (x_screen + 150, 600), (x_screen + 300, 610)])
+        
+        # Trees along path
+        tree_positions = [400, 1000, 1600, 2200, 2800]
+        for tx in tree_positions:
+            tree_x = int(tx - self.camera_x)
+            if -100 < tree_x < 1380:
+                self.draw_tree_cluster(tree_x + 10, ground_y=620, scale=1.0, mood="dusk")
+
+        # Additional rocks and bamboo
+        for wx in range(120, self.world_width + 180, 280):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 634, scale=0.9, tone="warm")
+
+    def draw_background_level4(self):
+        """Draw desperate pursuit with stormy atmosphere and tragic meeting point"""
+        # Dramatic dark sky
+        for y in range(0, 400):
+            darkness = int((y / 400) * 120)
+            r = int(max(0, 80 - darkness))
+            g = int(max(0, 80 - darkness))
+            b = int(max(0, 150 - darkness // 2))
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Heavy dark clouds moving
+        for cloud_i in range(5):
+            cx = (cloud_i * 300 + self.anim_offset) % 1600
+            c_x = int(cx - self.camera_x / 2)
+            if -200 < c_x < 1280:
+                pygame.draw.circle(self.screen, (40, 40, 60), (c_x, 80 + cloud_i * 30), 60)
+                pygame.draw.circle(self.screen, (40, 40, 60), (c_x + 80, 100 + cloud_i * 30), 50)
+        
+        # Lightning bolts (animated)
+        if self.anim_offset % 20 < 8:
+            # First lightning
+            pygame.draw.line(self.screen, (255, 255, 200), (300, 0), (350, 150), 4)
+            pygame.draw.line(self.screen, (200, 200, 255), (300, 0), (350, 150), 1)
+            pygame.draw.line(self.screen, (255, 255, 200), (350, 150), (320, 300), 4)
+            pygame.draw.line(self.screen, (200, 200, 255), (350, 150), (320, 300), 1)
+            
+        if self.anim_offset % 25 > 10 and self.anim_offset % 25 < 18:
+            # Second lightning strike
+            pygame.draw.line(self.screen, (255, 255, 200), (900, 0), (850, 200), 4)
+            pygame.draw.line(self.screen, (200, 200, 255), (900, 0), (850, 200), 1)
+            pygame.draw.line(self.screen, (255, 255, 200), (850, 200), (870, 340), 4)
+            pygame.draw.line(self.screen, (200, 200, 255), (850, 200), (870, 340), 1)
+        
+        # Rain streaks
+        for rain_line in range(20):
+            rain_x = (rain_line * 80 + self.anim_offset * 4) % 1280
+            pygame.draw.line(self.screen, (100, 120, 200), (rain_x, 0), (rain_x + 40, 720), 1)
+        
+        # START: Starting point (riverside/path start)
+        start_x = int(-self.camera_x)
+        if -250 < start_x < 1280:
+            self.draw_eastern_jin_hall(
+                start_x - 4, 468, 128, 152,
+                wall_color=(186, 176, 162),
+                wood_color=(86, 54, 33),
+                roof_color=(66, 42, 28),
+                damaged=True
+            )
+        
+        # END: Tragic meeting temple (goal)
+        temple_x = int(3420 - self.camera_x)
+        if -300 < temple_x < 1280:
+            self.draw_eastern_jin_hall(
+                temple_x + 38, 330, 124, 220,
+                wall_color=(170, 160, 148),
+                wood_color=(90, 70, 56),
+                roof_color=(74, 56, 44),
+                damaged=True
+            )
+            self.draw_eastern_jin_hall(
+                temple_x + 52, 284, 96, 120,
+                wall_color=(162, 152, 142),
+                wood_color=(82, 64, 50),
+                roof_color=(68, 50, 40),
+                damaged=True
+            )
+            pygame.draw.rect(self.screen, (88, 66, 46), (temple_x + 70, 510, 60, 18))
+            self.draw_text("殇", self.font_large, (255, 100, 100), temple_x + 100, 350, center=True)
+        
+        # Ground/earth elements showing despair
+        for x in range(-200, self.world_width, 250):
+            x_screen = x - self.camera_x
+            if -100 < x_screen < 1380:
+                pygame.draw.ellipse(self.screen, (50, 30, 20), (x_screen, 620, 180, 30))
+
+        # Storm vegetation and debris
+        for wx in range(120, self.world_width + 180, 320):
+            sx = int(wx - self.camera_x)
+            if -140 < sx < 1420:
+                self.draw_tree_cluster(sx, ground_y=620, scale=0.85, mood="storm")
+        for wx in range(60, self.world_width + 120, 280):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 636, scale=0.95, tone="storm")
+
+        # Liang Shanbo near the tragic temple
+        liang_x = int(3460 - self.camera_x)
+        if -120 < liang_x < 1400:
+            self.draw_liang_shanbo(liang_x, ground_y=606, scale=0.9, pose="ill")
+    
+    def draw_background_level5(self):
+        """Draw graveyard and wedding procession before Zhu Yingtai's leap."""
+        def blend(ca, cb, t):
+            return tuple(int(ca[i] * (1.0 - t) + cb[i] * t) for i in range(3))
+
+        sadness = 0.0
+        if self.player and self.goal_x > 0:
+            sadness = max(0.0, min(1.0, (self.player.x - 520.0) / max(1.0, (self.goal_x - 520.0))))
+
+        # Tragic dusk gradient
+        for y in range(0, 720):
+            t = y / 720.0
+            r = int(86 - t * 40)
+            g = int(72 - t * 38)
+            b = int(110 - t * 30)
+            pygame.draw.line(self.screen, (max(18, r), max(16, g), max(30, b)), (0, y), (1280, y))
+
+        # Waning moon and drifting cloud veil
+        pygame.draw.circle(self.screen, (188, 178, 204), (1010, 145), 52)
+        pygame.draw.circle(self.screen, (82, 66, 94), (1030, 136), 46)
+        cloud_shift = int(self.anim_offset * 1.2)
+        for i in range(4):
+            cloud_x = (780 + i * 180 + cloud_shift) % 1700 - 220
+            cloud_y = 130 + (i % 2) * 22
+            pygame.draw.ellipse(self.screen, (88, 80, 108), (cloud_x, cloud_y, 240, 48))
+            pygame.draw.ellipse(self.screen, (74, 66, 94), (cloud_x + 40, cloud_y + 10, 210, 38))
+
+        # Distant bleak mountains and ruined wall silhouette
+        pygame.draw.polygon(self.screen, (58, 52, 70), [(0, 430), (260, 270), (520, 430)])
+        pygame.draw.polygon(self.screen, (68, 60, 80), [(420, 430), (780, 220), (1120, 430)])
+        pygame.draw.polygon(self.screen, (54, 48, 66), [(980, 430), (1280, 300), (1280, 430)])
+        for wx in range(0, 1280, 124):
+            top = 462 + (wx // 124 % 2) * 7
+            pygame.draw.rect(self.screen, (56, 48, 58), (wx, top, 100, 20))
+            pygame.draw.rect(self.screen, (44, 38, 48), (wx + 18, top - 14, 34, 14))
+
+        # Wedding town buildings in the background; colors fade with sadness.
+        for bx in range(460, 3160, 410):
+            sx = int(bx - self.camera_x)
+            if -260 < sx < 1420:
+                bw = 104 + ((bx // 410) % 3) * 14
+                bh = 130 + ((bx // 410) % 2) * 28
+                by = 620 - bh
+                wall = blend((206, 188, 168), (112, 108, 122), sadness)
+                wood = blend((104, 68, 44), (78, 70, 82), sadness)
+                roof = blend((86, 58, 40), (70, 64, 84), sadness)
+                self.draw_eastern_jin_hall(
+                    sx - bw // 2, by, bw, bh,
+                    wall_color=wall,
+                    wood_color=wood,
+                    roof_color=roof,
+                    lanterns=(sadness < 0.78)
+                )
+
+        # Moving mist bands near ground
+        for i in range(10):
+            mist_x = int((i * 170 + self.anim_offset * 2) % 1580) - 160
+            pygame.draw.ellipse(self.screen, (120, 118, 138), (mist_x, 514 + (i % 3) * 24, 240, 56))
+
+        # Windswept paper streamers from the wedding route
+        for i in range(22):
+            px = int((i * 71 + self.anim_offset * 4) % 1450) - 90
+            py = 420 + ((i * 37 + self.anim_offset * 2) % 210)
+            pygame.draw.line(self.screen, (156, 132, 148), (px, py), (px + 10, py + 4), 1)
+
+        # Sparse cemetery stones
+        for gx in range(-200, self.world_width + 200, 260):
+            sx = int(gx - self.camera_x)
+            if -80 < sx < 1360:
+                pygame.draw.rect(self.screen, (88, 84, 96), (sx, 560, 26, 60))
+                pygame.draw.rect(self.screen, (70, 66, 78), (sx, 560, 26, 60), 2)
+
+        # Crowd along the marriage route.
+        for px in range(230, self.world_width - 120, 92):
+            sx = int(px - self.camera_x)
+            if -80 < sx < 1360:
+                lane_offset = (px // 92) % 2
+                crowd_ground = 612 + lane_offset * 4
+                self.draw_crowd_figure(sx, ground_y=crowd_ground, sadness=sadness, style=px // 92)
+
+        # Grave-route terrain details
+        for wx in range(100, self.world_width + 180, 280):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 636, scale=0.88, tone="storm")
+
+        # Bent trees and lantern posts along the mourning road
+        for tx in range(-120, self.world_width + 240, 310):
+            sx = int(tx - self.camera_x)
+            if -120 < sx < 1400:
+                trunk_h = 66 + ((tx // 310) % 3) * 14
+                base_y = 620
+                bend = 18 if (tx // 310) % 2 == 0 else -18
+                pygame.draw.rect(self.screen, (58, 48, 44), (sx, base_y - trunk_h, 12, trunk_h))
+                pygame.draw.line(self.screen, (62, 52, 48), (sx + 6, base_y - trunk_h + 10), (sx + 6 + bend, base_y - trunk_h - 16), 4)
+                pygame.draw.line(self.screen, (62, 52, 48), (sx + 6, base_y - trunk_h + 22), (sx + 6 - bend // 2, base_y - trunk_h - 8), 3)
+
+        for lx in range(620, self.world_width, 420):
+            sx = int(lx - self.camera_x)
+            if -80 < sx < 1360:
+                pygame.draw.rect(self.screen, (72, 52, 38), (sx - 2, 500, 4, 100))
+                pygame.draw.circle(self.screen, (246, 192, 98), (sx, 488), 8)
+                pygame.draw.circle(self.screen, (160, 108, 72), (sx, 488), 9, 1)
+                pygame.draw.line(self.screen, (156, 70, 68), (sx, 496), (sx, 504), 2)
+
+        # Start shrine
+        start_x = int(-self.camera_x + 12)
+        if -220 < start_x < 1280:
+            self.draw_eastern_jin_hall(
+                start_x, 486, 170, 134,
+                wall_color=(176, 166, 158),
+                wood_color=(84, 54, 36),
+                roof_color=(64, 42, 30),
+                damaged=True
+            )
+
+        # Wedding procession in front of the grave route
+        procession_x = int(1460 - self.camera_x)
+        if -420 < procession_x < 1560:
+            path_y = 576
+            pygame.draw.rect(self.screen, (88, 64, 64), (procession_x - 260, path_y, 520, 12))
+
+            # Overhead wedding lantern garland and petals
+            garland_y = 474
+            for lx in range(procession_x - 230, procession_x + 231, 52):
+                pygame.draw.line(self.screen, (118, 78, 56), (lx, garland_y - 18), (lx, garland_y - 6), 1)
+                pygame.draw.circle(self.screen, (248, 188, 82), (lx, garland_y), 6)
+                pygame.draw.circle(self.screen, (170, 108, 58), (lx, garland_y), 6, 1)
+            for i in range(18):
+                petal_x = procession_x - 300 + ((i * 41 + self.anim_offset * 5) % 640)
+                petal_y = 486 + ((i * 27 + self.anim_offset * 3) % 120)
+                pygame.draw.ellipse(self.screen, (236, 128, 150), (petal_x, petal_y, 8, 4))
+
+            # Lead banner and attendants
+            banner_x = procession_x - 200
+            pygame.draw.line(self.screen, (90, 62, 46), (banner_x, 520), (banner_x, 578), 3)
+            pygame.draw.polygon(self.screen, (178, 58, 72), [(banner_x, 524), (banner_x + 44, 534), (banner_x, 548)])
+            pygame.draw.line(self.screen, (228, 176, 94), (banner_x + 12, 530), (banner_x + 30, 536), 2)
+            self.draw_text("囍", self.font_small, (236, 210, 128), banner_x + 16, 536, center=True)
+
+            # Wedding arch beside the road
+            arch_x = procession_x + 248
+            pygame.draw.rect(self.screen, (124, 82, 58), (arch_x - 48, 516, 10, 60))
+            pygame.draw.rect(self.screen, (124, 82, 58), (arch_x + 38, 516, 10, 60))
+            pygame.draw.rect(self.screen, (136, 88, 60), (arch_x - 56, 506, 104, 14))
+            pygame.draw.rect(self.screen, (180, 56, 70), (arch_x - 30, 508, 52, 10))
+            self.draw_text("囍", self.font_tiny, (246, 224, 154), arch_x - 4, 513, center=True)
+
+            # Bridal sedan chair
+            chair_rect = pygame.Rect(procession_x - 58, 516, 116, 56)
+            pygame.draw.rect(self.screen, (172, 56, 62), chair_rect)
+            pygame.draw.rect(self.screen, (96, 34, 40), chair_rect, 3)
+            pygame.draw.rect(self.screen, (214, 188, 128), (procession_x - 20, 532, 40, 24))
+            pygame.draw.rect(self.screen, (108, 74, 52), (procession_x - 160, 544, 320, 6))
+            pygame.draw.polygon(self.screen, (142, 42, 52), [(procession_x - 70, 516), (procession_x + 70, 516), (procession_x + 48, 496), (procession_x - 48, 496)])
+            pygame.draw.line(self.screen, (226, 190, 102), (procession_x - 44, 510), (procession_x + 44, 510), 2)
+
+            # Bearers
+            for ox in [-128, -84, 84, 128]:
+                px = procession_x + ox
+                bob = int(2 * math.sin((self.anim_offset + ox) / 8))
+                pygame.draw.circle(self.screen, (234, 194, 158), (px, 534 + bob), 5)
+                pygame.draw.rect(self.screen, (160, 56, 64), (px - 6, 539 + bob, 12, 18))
+                pygame.draw.line(self.screen, (72, 42, 32), (px - 3, 557 + bob), (px - 3, 572 + bob), 2)
+                pygame.draw.line(self.screen, (72, 42, 32), (px + 3, 557 + bob), (px + 3, 572 + bob), 2)
+
+            # Musician and drum
+            drum_x = procession_x + 188
+            pygame.draw.circle(self.screen, (170, 116, 76), (drum_x, 554), 16)
+            pygame.draw.circle(self.screen, (86, 58, 36), (drum_x, 554), 16, 2)
+            pygame.draw.line(self.screen, (214, 170, 94), (drum_x + 18, 542), (drum_x + 30, 552), 2)
+            pygame.draw.circle(self.screen, (234, 194, 158), (drum_x + 26, 536), 4)
+            pygame.draw.rect(self.screen, (152, 52, 62), (drum_x + 20, 540, 12, 18))
+
+            # Matchmaker and umbrella attendants for a fuller marriage ceremony.
+            match_x = procession_x - 246
+            pygame.draw.circle(self.screen, (236, 194, 162), (match_x, 538), 5)
+            pygame.draw.rect(self.screen, (168, 74, 86), (match_x - 7, 543, 14, 20))
+            pygame.draw.line(self.screen, (70, 42, 34), (match_x - 3, 563), (match_x - 3, 576), 2)
+            pygame.draw.line(self.screen, (70, 42, 34), (match_x + 3, 563), (match_x + 3, 576), 2)
+            for ox in (-300, 304):
+                ux = procession_x + ox
+                uy = 530
+                pygame.draw.line(self.screen, (112, 76, 56), (ux, uy + 14), (ux, 580), 2)
+                pygame.draw.polygon(self.screen, (186, 64, 78), [(ux - 20, uy + 14), (ux + 20, uy + 14), (ux, uy - 10)])
+                pygame.draw.circle(self.screen, (240, 192, 164), (ux, uy + 26), 4)
+
+        # Goal tomb and cracked grave
+        grave_x = int(self.goal_x - self.camera_x)
+        if -280 < grave_x < 1540:
+            mound_y = 585
+            pygame.draw.ellipse(self.screen, (82, 70, 62), (grave_x - 135, mound_y, 270, 82))
+            pygame.draw.ellipse(self.screen, (66, 56, 48), (grave_x - 122, mound_y + 20, 244, 60))
+            # Tombstone
+            pygame.draw.rect(self.screen, (112, 106, 120), (grave_x - 34, 448, 68, 142))
+            pygame.draw.rect(self.screen, (86, 80, 92), (grave_x - 34, 448, 68, 142), 3)
+            pygame.draw.ellipse(self.screen, (112, 106, 120), (grave_x - 34, 418, 68, 48))
+            # Offerings beside grave
+            pygame.draw.rect(self.screen, (112, 82, 60), (grave_x - 102, 570, 42, 12))
+            pygame.draw.circle(self.screen, (220, 176, 96), (grave_x - 86, 566), 4)
+            pygame.draw.circle(self.screen, (220, 176, 96), (grave_x - 76, 566), 4)
+            # Open crack
+            crack_points = [(grave_x - 26, 602), (grave_x - 6, 542), (grave_x + 18, 598), (grave_x + 34, 720), (grave_x - 42, 720)]
+            pygame.draw.polygon(self.screen, (20, 12, 16), crack_points)
+            glow = 30 + int(10 * math.sin(self.anim_offset / 6))
+            pygame.draw.polygon(self.screen, (90 + glow, 50, 60), [(grave_x - 16, 604), (grave_x - 2, 560), (grave_x + 12, 603)])
+
+            # Liang Shanbo's spirit by the tomb
+            self.draw_liang_shanbo(grave_x + 78, ground_y=600, scale=0.92, pose="spirit")
+
+        # Drizzle to heighten tension
+        for i in range(24):
+            rx = (i * 60 + self.anim_offset * 3) % 1300
+            pygame.draw.line(self.screen, (122, 132, 166), (rx, 0), (rx + 30, 720), 1)
+
+        # Fade to sad mood as Zhu nears the grave.
+        if sadness > 0:
+            overlay = pygame.Surface((1280, 720), pygame.SRCALPHA)
+            overlay.fill((34, 32, 48, int(175 * sadness)))
+            self.screen.blit(overlay, (0, 0))
+
+    def draw_background_level6(self):
+        """Draw heavenly butterfly ascension with ethereal atmosphere."""
+        # Gradient sunset from golden at bottom to deep purple at top
+        for y in range(0, 720):
+            t = y / 720.0
+            r = int(255 - t * 80)
+            g = int(180 - t * 120)
+            b = int(80 + t * 175)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+        
+        # Ethereal clouds moving upward
+        for cloud_i in range(6):
+            cloud_y = 500 - (cloud_i * 100 + self.anim_offset) % 600
+            for cloud_x in [200, 600, 1000]:
+                cx_pos = int(cloud_x - self.camera_x / 4)
+                if -100 < cx_pos < 1380:
+                    pygame.draw.circle(self.screen, (200, 150, 255), (cx_pos, cloud_y), 40)
+                    pygame.draw.circle(self.screen, (200, 150, 255), (cx_pos + 70, cloud_y + 20), 35)
+        
+        # Animated sun/moon at horizon
+        sun_x = int(1000 + int(50 * (self.anim_offset / 60)) - self.camera_x / 3)
+        sun_y = 600
+        pygame.draw.circle(self.screen, (255, 200, 80), (sun_x, sun_y), 90)
+        pygame.draw.circle(self.screen, (255, 220, 150), (sun_x, sun_y), 75)
+        
+        # Glow rays from sun
+        for angle in range(0, 360, 30):
+            rad = math.radians(angle)
+            end_x = int(sun_x + 150 * math.cos(rad))
+            end_y = int(sun_y + 150 * math.sin(rad))
+            pygame.draw.line(self.screen, (255, 200, 100), (sun_x, sun_y), (end_x, end_y), 2)
+        
+        # Floating islands/rocks as stepping stones (ethereal platforms in sky)
+        island_positions = [
+            (500, 550), (1200, 480), (700, 380), (1400, 300), (600, 200),
+            (1300, 120), (900, 400), (1500, 250)
+        ]
+        for ix, iy in island_positions:
+            rock_x = int(ix - self.camera_x)
+            if -150 < rock_x < 1380:
+                pygame.draw.ellipse(self.screen, (180, 150, 200), (rock_x - 40, iy - 15, 80, 30))
+                pygame.draw.polygon(self.screen, (200, 170, 220), [(rock_x - 40, iy), (rock_x, iy - 20), (rock_x + 40, iy)])
+
+        # Additional sky rocks and bamboo-like celestial stalks near the lower horizon
+        for wx in range(80, self.world_width + 140, 260):
+            sx = int(wx - self.camera_x)
+            if -120 < sx < 1400:
+                self.draw_rock_cluster(sx, 642, scale=0.9, tone="cool")
+        
+        # Start pavilion after the leap
+        start_x = int(-self.camera_x)
+        if -250 < start_x < 1280:
+            self.draw_eastern_jin_hall(
+                start_x + 16, 496, 150, 124,
+                wall_color=(198, 182, 162),
+                wood_color=(88, 56, 34),
+                roof_color=(68, 46, 30),
+                lanterns=True
+            )
+            pygame.draw.rect(self.screen, (150, 100, 60), (start_x + 63, 580, 54, 36))
+            pygame.draw.circle(self.screen, (255, 150, 150), (start_x + 90, 590), 5)
+        
+        # Heavenly gate/portal (goal)
+        goal_x = int(self.goal_x - self.camera_x)
+        if -350 < goal_x < 1280:
+            pygame.draw.circle(self.screen, (255, 240, 200), (goal_x, 100), 120)
+            pygame.draw.circle(self.screen, (255, 220, 150), (goal_x, 100), 100)
+            pygame.draw.circle(self.screen, (220, 200, 255), (goal_x, 100), 80)
+            pygame.draw.circle(self.screen, (200, 180, 220), (goal_x, 100), 60)
+            for ray in range(12):
+                rad = math.radians(ray * 30)
+                end_x = int(goal_x + 150 * math.cos(rad))
+                end_y = int(100 + 150 * math.sin(rad))
+                pygame.draw.line(self.screen, (255, 240, 200), (goal_x, 100), (end_x, end_y), 3)
+            pygame.draw.circle(self.screen, (255, 200, 100), (goal_x, 100), 20)
+            for i in range(20):
+                angle = i * 18
+                rad = math.radians(angle)
+                x1 = int(goal_x + 15 * math.cos(rad))
+                y1 = int(100 + 15 * math.sin(rad))
+                x2 = int(goal_x + 25 * math.cos(rad))
+                y2 = int(100 + 25 * math.sin(rad))
+                pygame.draw.line(self.screen, (255, 150, 150), (x1, y1), (x2, y2), 2)
+        
+        # Scattered stars
+        for star_i in range(25):
+            star_x = (star_i * 60 + self.anim_offset // 4) % 1280
+            star_y = int(50 + (star_i % 5) * 30 + 20 * math.sin(self.anim_offset / 20 + star_i))
+            star_brightness = int(200 + 55 * math.sin(self.anim_offset / 30 + star_i))
+            pygame.draw.circle(self.screen, (star_brightness, star_brightness, 255), (star_x, star_y), 2)
+        
+        self.draw_willow_trees()
+
+    def shade_color(self, color, delta):
+        """Lighten or darken an RGB tuple by delta."""
+        return tuple(max(0, min(255, c + delta)) for c in color)
+
+    def draw_rock_cluster(self, x, y, scale=1.0, tone="warm"):
+        """Draw a small decorative rock cluster."""
+        x = int(x)
+        y = int(y)
+        if tone == "cool":
+            dark, mid, light = (78, 86, 104), (108, 120, 140), (138, 150, 168)
+        elif tone == "storm":
+            dark, mid, light = (52, 52, 60), (72, 72, 84), (102, 102, 118)
+        else:
+            dark, mid, light = (92, 84, 72), (126, 114, 96), (160, 146, 124)
+
+        w = int(40 * scale)
+        h = int(20 * scale)
+        pygame.draw.ellipse(self.screen, dark, (x - w // 2, y - h // 2, w, h))
+        pygame.draw.ellipse(self.screen, mid, (x - int(14 * scale), y - int(16 * scale), int(28 * scale), int(18 * scale)))
+        pygame.draw.ellipse(self.screen, light, (x - int(6 * scale), y - int(18 * scale), int(12 * scale), int(8 * scale)))
+
+    def draw_bamboo_cluster(self, x, ground_y=620, stalks=5, height=112, tone="green"):
+        """Draw bamboo stalks and leaves."""
+        x = int(x)
+        if tone == "dark":
+            stalk = (56, 90, 66)
+            leaves = (72, 116, 78)
+        else:
+            stalk = (72, 132, 78)
+            leaves = (90, 160, 94)
+
+        sway = int(3 * math.sin((self.anim_offset + x) / 10.0))
+        for i in range(stalks):
+            stem_x = x + i * 9 + ((i % 2) * sway)
+            stem_h = height - (i % 3) * 14
+            top_y = ground_y - stem_h
+            pygame.draw.line(self.screen, stalk, (stem_x, ground_y), (stem_x + sway, top_y), 3)
+            for node_y in range(ground_y - 12, top_y, -18):
+                pygame.draw.line(self.screen, self.shade_color(stalk, 20), (stem_x - 3, node_y), (stem_x + 3, node_y), 1)
+            leaf_y = top_y + 16
+            pygame.draw.polygon(self.screen, leaves, [(stem_x + sway, leaf_y), (stem_x + sway + 16, leaf_y - 8), (stem_x + sway + 4, leaf_y + 2)])
+            pygame.draw.polygon(self.screen, leaves, [(stem_x + sway, leaf_y + 8), (stem_x + sway - 16, leaf_y + 2), (stem_x + sway - 2, leaf_y + 12)])
+
+    def draw_tree_cluster(self, x, ground_y=620, scale=1.0, mood="lush"):
+        """Draw a stylized tree with trunk and foliage."""
+        x = int(x)
+        trunk_w = max(8, int(12 * scale))
+        trunk_h = int(70 * scale)
+        trunk_color = (88, 56, 36) if mood != "storm" else (66, 46, 40)
+        if mood == "storm":
+            leaf_a, leaf_b = (60, 62, 74), (76, 80, 96)
+        elif mood == "dusk":
+            leaf_a, leaf_b = (74, 102, 82), (92, 124, 98)
+        else:
+            leaf_a, leaf_b = (68, 122, 72), (92, 156, 96)
+
+        trunk_rect = pygame.Rect(x - trunk_w // 2, ground_y - trunk_h, trunk_w, trunk_h)
+        pygame.draw.rect(self.screen, trunk_color, trunk_rect)
+        crown_y = ground_y - trunk_h - int(16 * scale)
+        crown_r = int(28 * scale)
+        pygame.draw.circle(self.screen, leaf_a, (x, crown_y), crown_r)
+        pygame.draw.circle(self.screen, leaf_b, (x - crown_r // 2, crown_y + 4), int(crown_r * 0.8))
+        pygame.draw.circle(self.screen, leaf_b, (x + crown_r // 2, crown_y + 2), int(crown_r * 0.75))
+
+    def draw_liang_shanbo(self, x, ground_y=620, scale=1.0, pose="scholar"):
+        """Draw Liang Shanbo cameo in story-relevant scenes."""
+        x = int(x)
+        if pose == "dead":
+            body_w = int(52 * scale)
+            body_h = int(18 * scale)
+            bed_y = int(ground_y - 8)
+            pygame.draw.rect(self.screen, (112, 84, 64), (x - body_w // 2 - 8, bed_y - 8, body_w + 16, 10))
+            pygame.draw.rect(self.screen, (164, 126, 92), (x - body_w // 2 - 4, bed_y, body_w + 8, 6))
+            pygame.draw.ellipse(self.screen, (100, 108, 126), (x - body_w // 2, bed_y - body_h, body_w, body_h))
+            pygame.draw.circle(self.screen, (228, 188, 154), (x - body_w // 2 + 8, bed_y - body_h + 7), max(4, int(5 * scale)))
+            pygame.draw.ellipse(self.screen, (62, 50, 42), (x - body_w // 2 + 3, bed_y - body_h + 2, 12, 6))
+            pygame.draw.line(self.screen, (188, 196, 214), (x + body_w // 2 - 16, bed_y - body_h + 6), (x + body_w // 2 - 4, bed_y - body_h + 6), 2)
+            return
+
+        body_h = int(44 * scale)
+        body_w = int(22 * scale)
+        head_r = max(4, int(6 * scale))
+        robe = (72, 104, 172)
+        robe_trim = (112, 144, 212)
+        hair = (36, 26, 22)
+        skin = (236, 196, 160)
+
+        if pose == "spirit":
+            robe = (170, 186, 214)
+            robe_trim = (208, 220, 238)
+            hair = (110, 110, 126)
+        if pose == "ill":
+            robe = (92, 96, 116)
+            robe_trim = (130, 136, 158)
+        if pose == "companion":
+            robe = (76, 114, 182)
+            robe_trim = (126, 164, 222)
+
+        body_y = ground_y - body_h
+        # Robe
+        pygame.draw.rect(self.screen, robe, (x - body_w // 2, body_y, body_w, body_h))
+        pygame.draw.polygon(
+            self.screen,
+            robe_trim,
+            [(x - body_w // 2, body_y + 2), (x + body_w // 2, body_y + 2), (x + body_w // 2 + 2, body_y + body_h - 4), (x - body_w // 2 - 2, body_y + body_h - 4)],
+        )
+        # Head/hair
+        head_x = x - 5 if pose == "ill" else x
+        head_y = body_y - head_r + (3 if pose == "ill" else 0)
+        pygame.draw.circle(self.screen, skin, (head_x, head_y), head_r)
+        pygame.draw.ellipse(self.screen, hair, (head_x - head_r, head_y - head_r - 2, head_r * 2, head_r))
+        # Arms
+        arm_y = body_y + int(16 * scale)
+        if pose == "ill":
+            pygame.draw.line(self.screen, robe_trim, (x - 2, arm_y), (x - int(16 * scale), arm_y + int(9 * scale)), 3)
+        elif pose == "companion":
+            arm_swing = int(3 * math.sin(self.anim_offset / 6.0))
+            pygame.draw.line(self.screen, robe_trim, (x - body_w // 2, arm_y), (x - int(15 * scale), arm_y + int(2 * scale) + arm_swing), 3)
+            pygame.draw.line(self.screen, robe_trim, (x + body_w // 2, arm_y), (x + int(14 * scale), arm_y - int(4 * scale) - arm_swing), 3)
+        else:
+            pygame.draw.line(self.screen, robe_trim, (x - body_w // 2, arm_y), (x - int(16 * scale), arm_y + int(3 * scale)), 3)
+            pygame.draw.line(self.screen, robe_trim, (x + body_w // 2, arm_y), (x + int(16 * scale), arm_y + int(3 * scale)), 3)
+        # Legs
+        pygame.draw.line(self.screen, (66, 54, 44), (x - 5, ground_y - 3), (x - 5, ground_y + int(8 * scale)), 2)
+        pygame.draw.line(self.screen, (66, 54, 44), (x + 5, ground_y - 3), (x + 5, ground_y + int(8 * scale)), 2)
+
+    def draw_story_zhu(self, x, ground_y=620, mood="calm"):
+        """Draw a simple Zhu figure for story-only scenes."""
+        x = int(x)
+        robe = (176, 82, 118)
+        trim = (226, 160, 186)
+        if mood == "argue":
+            robe = (188, 64, 74)
+            trim = (234, 142, 132)
+        if mood == "wedding":
+            robe = (190, 48, 58)
+            trim = (246, 198, 124)
+
+        pygame.draw.rect(self.screen, robe, (x - 12, ground_y - 42, 24, 42))
+        pygame.draw.polygon(self.screen, trim, [(x - 12, ground_y - 40), (x + 12, ground_y - 40), (x + 15, ground_y - 4), (x - 15, ground_y - 4)])
+        pygame.draw.circle(self.screen, (238, 198, 162), (x, ground_y - 48), 6)
+        pygame.draw.ellipse(self.screen, (46, 28, 22), (x - 9, ground_y - 57, 18, 8))
+        pygame.draw.line(self.screen, (76, 46, 34), (x - 4, ground_y - 3), (x - 4, ground_y + 7), 2)
+        pygame.draw.line(self.screen, (76, 46, 34), (x + 4, ground_y - 3), (x + 4, ground_y + 7), 2)
+
+    def draw_story_disguise_student(self, x, ground_y=620):
+        """Draw Zhu in male-disguise look for early scenes."""
+        x = int(x)
+        pygame.draw.rect(self.screen, (72, 108, 172), (x - 12, ground_y - 42, 24, 42))
+        pygame.draw.polygon(self.screen, (122, 154, 214), [(x - 12, ground_y - 40), (x + 12, ground_y - 40), (x + 15, ground_y - 4), (x - 15, ground_y - 4)])
+        pygame.draw.rect(self.screen, (214, 96, 96), (x - 12, ground_y - 26, 24, 4))
+        pygame.draw.circle(self.screen, (238, 198, 162), (x, ground_y - 48), 6)
+        pygame.draw.ellipse(self.screen, (42, 28, 22), (x - 9, ground_y - 56, 18, 8))
+        pygame.draw.rect(self.screen, (56, 42, 34), (x - 6, ground_y - 60, 12, 3))
+        pygame.draw.line(self.screen, (76, 46, 34), (x - 4, ground_y - 3), (x - 4, ground_y + 7), 2)
+        pygame.draw.line(self.screen, (76, 46, 34), (x + 4, ground_y - 3), (x + 4, ground_y + 7), 2)
+
+    def draw_parent_figure(self, x, ground_y=620, gender="father"):
+        """Draw simple parent figures for family argument scene."""
+        x = int(x)
+        if gender == "mother":
+            robe = (112, 92, 138)
+            trim = (166, 146, 198)
+        else:
+            robe = (116, 96, 80)
+            trim = (166, 144, 126)
+
+        pygame.draw.rect(self.screen, robe, (x - 12, ground_y - 44, 24, 44))
+        pygame.draw.polygon(self.screen, trim, [(x - 12, ground_y - 42), (x + 12, ground_y - 42), (x + 14, ground_y - 6), (x - 14, ground_y - 6)])
+        pygame.draw.circle(self.screen, (232, 192, 158), (x, ground_y - 50), 6)
+        pygame.draw.ellipse(self.screen, (58, 42, 34), (x - 9, ground_y - 59, 18, 8))
+        pygame.draw.line(self.screen, (74, 54, 42), (x - 4, ground_y - 4), (x - 4, ground_y + 7), 2)
+        pygame.draw.line(self.screen, (74, 54, 42), (x + 4, ground_y - 4), (x + 4, ground_y + 7), 2)
+
+    def draw_crowd_figure(self, x, ground_y=620, sadness=0.0, style=0):
+        """Draw a small wedding crowd figure; colors mute as sadness rises."""
+        x = int(x)
+        style = int(style) % 3
+
+        def blend(ca, cb, t):
+            return tuple(int(ca[i] * (1.0 - t) + cb[i] * t) for i in range(3))
+
+        festive = [(188, 64, 78), (176, 104, 66), (138, 102, 172)][style]
+        muted = [(106, 94, 104), (102, 96, 92), (96, 96, 108)][style]
+        robe = blend(festive, muted, sadness)
+        trim = blend((238, 196, 132), (156, 148, 146), sadness)
+
+        pygame.draw.circle(self.screen, (232, 192, 160), (x, ground_y - 32), 4)
+        pygame.draw.ellipse(self.screen, (58, 42, 34), (x - 5, ground_y - 38, 10, 4))
+        pygame.draw.rect(self.screen, robe, (x - 6, ground_y - 28, 12, 18))
+        pygame.draw.rect(self.screen, trim, (x - 6, ground_y - 28, 12, 3))
+        pygame.draw.line(self.screen, (70, 54, 42), (x - 3, ground_y - 10), (x - 3, ground_y + 1), 2)
+        pygame.draw.line(self.screen, (70, 54, 42), (x + 3, ground_y - 10), (x + 3, ground_y + 1), 2)
+
+    def draw_brotherhood_emotes(self, zhu_x, zhu_y, liang_x, liang_ground_y):
+        """Draw simple thought/speech bubbles between Zhu and Liang."""
+        if self.state == GameState.LEVEL_2:
+            zhu_text = "一起学习"
+            liang_text = "兄弟"
+        else:
+            zhu_text = "要回乡"
+            liang_text = "别走"
+
+        pulse = int(2 * math.sin(self.anim_offset / 5.0))
+
+        # Zhu thought bubble.
+        thought_x = zhu_x + 22
+        thought_y = zhu_y - 24 + pulse
+        pygame.draw.circle(self.screen, (254, 250, 252), (thought_x, thought_y), 18)
+        pygame.draw.circle(self.screen, (210, 190, 196), (thought_x, thought_y), 18, 1)
+        pygame.draw.circle(self.screen, (252, 242, 248), (zhu_x + 10, zhu_y - 12), 4)
+        pygame.draw.circle(self.screen, (252, 242, 248), (zhu_x + 16, zhu_y - 19), 6)
+        self.draw_text(zhu_text, self.font_tiny, (164, 84, 94), thought_x, thought_y, center=True)
+
+        # Liang speech bubble.
+        liang_head_y = liang_ground_y - 42
+        bro_x = liang_x - 18
+        bro_y = liang_head_y - 16 + pulse
+        pygame.draw.circle(self.screen, (250, 246, 236), (bro_x, bro_y), 17)
+        pygame.draw.circle(self.screen, (176, 152, 124), (bro_x, bro_y), 17, 1)
+        self.draw_text(liang_text, self.font_tiny, (146, 94, 66), bro_x, bro_y, center=True)
+
+        # Shared link marks.
+        mid_x = (zhu_x + liang_x) // 2
+        mid_y = min(zhu_y, liang_head_y) - 8
+        pygame.draw.circle(self.screen, (255, 224, 142), (mid_x - 6, mid_y), 2)
+        pygame.draw.circle(self.screen, (255, 224, 142), (mid_x + 2, mid_y + 3), 2)
+        pygame.draw.circle(self.screen, (255, 224, 142), (mid_x + 10, mid_y + 1), 2)
+
+    def update_liang_follow(self):
+        """Move Liang with delay so he follows Zhu but is not tied to Zhu."""
+        if not self.player:
+            return
+        if not self.liang_follow.get("active", False):
+            return
+        if self.state not in (GameState.LEVEL_2, GameState.LEVEL_3):
+            return
+
+        follow_gap = 95 if self.player.facing > 0 else -95
+        target_x = self.player.x - follow_gap
+        target_y = self.player.y + self.player.height
+
+        dx = target_x - self.liang_follow["x"]
+        self.liang_follow["vx"] = self.liang_follow["vx"] * 0.82 + max(-1.7, min(1.7, dx * 0.045))
+        self.liang_follow["x"] += self.liang_follow["vx"] * 4.0
+
+        dy = target_y - self.liang_follow["y"]
+        self.liang_follow["y"] += max(-3.0, min(3.0, dy * 0.2))
+
+        # Keep a bit of distance to avoid overlap.
+        if abs(self.liang_follow["x"] - self.player.x) < 34:
+            if self.player.facing > 0:
+                self.liang_follow["x"] = self.player.x - 34
+            else:
+                self.liang_follow["x"] = self.player.x + 34
+
+        self.liang_follow["x"] = max(16.0, min(float(self.world_width - 16), self.liang_follow["x"]))
+        self.liang_follow["y"] = max(80.0, min(700.0, self.liang_follow["y"]))
+
+    def draw_following_liang(self):
+        """Liang follows Zhu through the academy and departure journey."""
+        if not self.player or self.state not in (GameState.LEVEL_2, GameState.LEVEL_3):
+            return
+        if not self.liang_follow.get("active", False):
+            return
+
+        liang_screen_x = int(self.liang_follow["x"] - self.camera_x)
+        if not (-140 < liang_screen_x < 1420):
+            return
+
+        ground_y = int(self.liang_follow["y"])
+        self.draw_liang_shanbo(liang_screen_x, ground_y=ground_y, scale=0.92, pose="companion")
+
+        zhu_screen_x = int(self.player.x - self.camera_x + self.player.width // 2)
+        zhu_screen_y = int(self.player.y)
+        self.draw_brotherhood_emotes(zhu_screen_x, zhu_screen_y, liang_screen_x, ground_y)
+
+    def draw_text_panel(self, text, font, color, center_x, center_y, bg=(18, 16, 28, 175), border=(245, 222, 182), pad_x=16, pad_y=8):
+        """Draw centered text with a contrast panel behind it."""
+        text_surface = font.render(text, True, color)
+        text_rect = text_surface.get_rect(center=(center_x, center_y))
+        panel = pygame.Surface((text_rect.width + pad_x * 2, text_rect.height + pad_y * 2), pygame.SRCALPHA)
+        panel.fill(bg)
+        panel_rect = panel.get_rect(center=(center_x, center_y))
+        self.screen.blit(panel, panel_rect)
+        pygame.draw.rect(self.screen, border, panel_rect, 2)
+        self.screen.blit(text_surface, text_rect)
+
+    def draw_eastern_jin_hall(self, x, y, w, h, wall_color=(206, 196, 176), wood_color=(98, 60, 36), roof_color=(78, 56, 38), lanterns=False, damaged=False):
+        """Draw a timber hall inspired by Eastern Jin architecture."""
+        x, y, w, h = int(x), int(y), int(w), int(h)
+        if x + w < -160 or x > 1450:
+            return
+
+        roof_base = y + 26
+        plinth_h = 16
+        inner_h = h - plinth_h
+
+        # Grounded terrain base so halls feel anchored to land.
+        foundation_y = y + h - 2
+        foundation_h = max(14, min(28, h // 6))
+        pygame.draw.ellipse(self.screen, (112, 98, 80), (x - 26, foundation_y - 10, w + 52, foundation_h + 16))
+        pygame.draw.rect(self.screen, (132, 118, 98), (x - 20, foundation_y - 2, w + 40, foundation_h))
+        for sx in range(x - 14, x + w + 18, 24):
+            pygame.draw.ellipse(self.screen, (102, 88, 72), (sx, foundation_y + foundation_h - 2, 16, 8))
+
+        # Stone plinth
+        pygame.draw.rect(self.screen, (142, 132, 118), (x - 6, y + h - plinth_h, w + 12, plinth_h))
+        pygame.draw.rect(self.screen, (112, 104, 92), (x - 6, y + h - 6, w + 12, 6))
+        for sx in range(x + 12, x + w - 18, 32):
+            pygame.draw.rect(self.screen, (168, 156, 140), (sx, y + h - plinth_h + 3, 20, plinth_h - 5))
+
+        # Whitewashed wall and timber frame
+        wall_h = inner_h - (roof_base - y)
+        pygame.draw.rect(self.screen, wall_color, (x, roof_base, w, wall_h))
+        pygame.draw.rect(self.screen, self.shade_color(wall_color, -24), (x + w - 10, roof_base, 10, wall_h))
+        pygame.draw.rect(self.screen, wood_color, (x, roof_base + 1, w, 9))
+
+        bay_count = max(3, w // 56)
+        for i in range(bay_count + 1):
+            px = x + (i * w) // bay_count
+            pygame.draw.line(self.screen, wood_color, (px, roof_base + 8), (px, y + h - plinth_h), 3)
+        pygame.draw.line(self.screen, self.shade_color(wood_color, -20), (x, y + h - plinth_h), (x + w, y + h - plinth_h), 3)
+
+        # Dougong brackets under eaves
+        bracket_color = self.shade_color(wood_color, 18)
+        for i in range(bay_count):
+            cx = x + int((i + 0.5) * w / bay_count)
+            pygame.draw.polygon(self.screen, bracket_color, [(cx - 10, roof_base + 10), (cx, roof_base + 2), (cx + 10, roof_base + 10)])
+            pygame.draw.rect(self.screen, self.shade_color(wood_color, -8), (cx - 12, roof_base + 10, 24, 3))
+
+        # Xieshan roof with upturned eaves
+        wing = max(16, w // 10)
+        roof_dark = self.shade_color(roof_color, -14)
+        ridge_color = self.shade_color(roof_color, 18)
+        pygame.draw.polygon(self.screen, roof_color, [(x - wing, roof_base + 6), (x + w + wing, roof_base + 6), (x + w - 8, y), (x + 8, y)])
+        pygame.draw.polygon(self.screen, ridge_color, [(x + 10, y + 2), (x + w - 10, y + 2), (x + w - 26, y - 10), (x + 26, y - 10)])
+        pygame.draw.polygon(self.screen, roof_dark, [(x - wing, roof_base + 6), (x - wing - 12, roof_base - 2), (x - wing + 8, roof_base + 1)])
+        pygame.draw.polygon(self.screen, roof_dark, [(x + w + wing, roof_base + 6), (x + w + wing + 12, roof_base - 2), (x + w + wing - 8, roof_base + 1)])
+        tile_color = self.shade_color(roof_color, 26)
+        for tx in range(x - wing + 6, x + w + wing - 8, 16):
+            y_shift = 2 if (tx // 16) % 2 == 0 else 4
+            pygame.draw.line(self.screen, tile_color, (tx, roof_base + 3), (tx + 10, roof_base - 7 + y_shift), 1)
+
+        # Central screen door and side lattice windows
+        door_w = max(24, w // 5)
+        door_h = max(36, h // 4)
+        door_x = x + w // 2 - door_w // 2
+        door_y = y + h - plinth_h - door_h
+        door_color = self.shade_color(wood_color, -18)
+        pygame.draw.rect(self.screen, door_color, (door_x, door_y, door_w, door_h))
+        pygame.draw.line(self.screen, self.shade_color(wood_color, 22), (door_x + door_w // 2, door_y), (door_x + door_w // 2, door_y + door_h), 2)
+        pygame.draw.circle(self.screen, (214, 178, 108), (door_x + door_w - 6, door_y + door_h // 2), 2)
+
+        win_w = max(20, w // 8)
+        win_h = max(24, h // 6)
+        for wx in (x + 16, x + w - win_w - 16):
+            wy = door_y + 3
+            pygame.draw.rect(self.screen, (171, 194, 204), (wx, wy, win_w, win_h))
+            pygame.draw.rect(self.screen, wood_color, (wx, wy, win_w, win_h), 2)
+            pygame.draw.line(self.screen, self.shade_color(wood_color, -6), (wx + win_w // 2, wy), (wx + win_w // 2, wy + win_h), 1)
+            pygame.draw.line(self.screen, self.shade_color(wood_color, -6), (wx, wy + win_h // 2), (wx + win_w, wy + win_h // 2), 1)
+
+        if lanterns:
+            lx = x + 16
+            rx = x + w - 16
+            ly = roof_base + 18
+            pygame.draw.line(self.screen, wood_color, (lx, roof_base + 8), (lx, ly - 6), 1)
+            pygame.draw.line(self.screen, wood_color, (rx, roof_base + 8), (rx, ly - 6), 1)
+            pygame.draw.circle(self.screen, (250, 192, 74), (lx, ly), 5)
+            pygame.draw.circle(self.screen, (250, 192, 74), (rx, ly), 5)
+
+        if damaged:
+            crack = self.shade_color(wood_color, 28)
+            pygame.draw.line(self.screen, crack, (x + w - 40, roof_base + 8), (x + w - 18, roof_base + 36), 3)
+            pygame.draw.line(self.screen, crack, (x + w - 28, roof_base + 2), (x + w - 55, roof_base + 42), 3)
+            pygame.draw.line(self.screen, self.shade_color(roof_color, -24), (x + w - 24, y + 5), (x + w + 6, y + 24), 3)
+
+    def draw_eastern_jin_gatehouse(self, x, y, w, h, plaque_text=""):
+        """Draw a city/academy gate with towered sides and central passage."""
+        x, y, w, h = int(x), int(y), int(w), int(h)
+        if x + w < -180 or x > 1450:
+            return
+
+        tower_w = max(44, w // 4)
+        passage_x = x + tower_w
+        passage_w = w - tower_w * 2
+
+        self.draw_eastern_jin_hall(x, y, tower_w, h, wall_color=(198, 188, 170), wood_color=(93, 57, 34), roof_color=(74, 52, 34))
+        self.draw_eastern_jin_hall(x + w - tower_w, y, tower_w, h, wall_color=(198, 188, 170), wood_color=(93, 57, 34), roof_color=(74, 52, 34))
+
+        # Main gate beam and opening
+        beam_y = y + 54
+        pygame.draw.rect(self.screen, (92, 58, 36), (passage_x - 8, beam_y, passage_w + 16, 18))
+        pygame.draw.rect(self.screen, (62, 36, 22), (passage_x + 14, beam_y + 16, passage_w - 28, h - 54))
+        pygame.draw.rect(self.screen, (42, 24, 16), (passage_x + 22, beam_y + 22, passage_w - 44, h - 78))
+
+        # Plaque
+        if plaque_text:
+            plaque_rect = pygame.Rect(passage_x + passage_w // 2 - 42, beam_y - 22, 84, 16)
+            pygame.draw.rect(self.screen, (45, 35, 28), plaque_rect)
+            pygame.draw.rect(self.screen, (160, 132, 88), plaque_rect, 1)
+            self.draw_text(plaque_text, self.font_small, (232, 202, 132), plaque_rect.centerx, plaque_rect.centery, center=True)
+    
+    def reset_ending_flappy(self):
+        self.ending_state = "intro"
+        self.ending_butterfly_y = 360.0
+        self.ending_butterfly_vel = 0.0
+        self.ending_butterfly_tilt = -6.0
+        self.ending_scroll = 0.0
+        self.ending_obstacles = []
+        self.ending_spawn_timer = 45
+        self.ending_score = 0
+        self.ending_retry_cooldown = 0
+
+    def handle_ending_flap(self):
+        if self.ending_state == "complete":
+            self.state = GameState.TITLE
+            self.title_music_played = False
+            self.ending_music_played = False
+            self.player = None
+            self.sound_manager.play_music("title", loops=-1)
+            return
+
+        if self.ending_state in ["intro", "crashed"]:
+            self.ending_state = "playing"
+            self.ending_butterfly_y = 360.0
+            self.ending_butterfly_vel = -7.0
+            self.ending_butterfly_tilt = -28.0
+            self.ending_obstacles = []
+            self.ending_spawn_timer = 30
+            self.ending_score = 0
+            self.ending_scroll = 0.0
+            self.sound_manager.play_sound("jump")
+            return
+
+        if self.ending_state == "playing":
+            self.ending_butterfly_vel = -7.4
+            self.ending_butterfly_tilt = -30.0
+            self.sound_manager.play_sound("jump")
+
+    def spawn_ending_obstacle(self):
+        gap_h = random.randint(190, 230)
+        gap_top = random.randint(95, 720 - gap_h - 95)
+        width = random.randint(90, 108)
+        self.ending_obstacles.append({
+            "x": 1320.0,
+            "w": width,
+            "gap_y": gap_top,
+            "gap_h": gap_h,
+            "passed": False,
+        })
+
+    def update_ending_flappy(self):
+        self.ending_retry_cooldown = max(0, self.ending_retry_cooldown - 1)
+        self.ending_scroll = (self.ending_scroll + 2.4) % 2000
+
+        if self.ending_state == "intro":
+            self.ending_butterfly_y = 360.0 + 7.0 * math.sin(pygame.time.get_ticks() / 180.0)
+            self.ending_butterfly_vel = 0.0
+            self.ending_butterfly_tilt = -6.0
+            return
+
+        if self.ending_state == "complete":
+            self.ending_butterfly_y = 310.0 + 12.0 * math.sin(pygame.time.get_ticks() / 220.0)
+            self.ending_butterfly_vel *= 0.85
+            self.ending_butterfly_tilt = -8.0
+            return
+
+        if self.ending_state == "crashed":
+            self.ending_butterfly_vel = min(10.0, self.ending_butterfly_vel + 0.5)
+            self.ending_butterfly_y = min(702.0, self.ending_butterfly_y + self.ending_butterfly_vel)
+            self.ending_butterfly_tilt = min(65.0, self.ending_butterfly_tilt + 3.5)
+            for obstacle in self.ending_obstacles:
+                obstacle["x"] -= 2.8
+            self.ending_obstacles = [o for o in self.ending_obstacles if o["x"] + o["w"] > -80]
+            return
+
+        # Playing state
+        self.ending_butterfly_vel = min(9.5, self.ending_butterfly_vel + 0.42)
+        self.ending_butterfly_y += self.ending_butterfly_vel
+        self.ending_butterfly_tilt = max(-35.0, min(55.0, self.ending_butterfly_vel * 4.0))
+        self.ending_spawn_timer -= 1
+        if self.ending_spawn_timer <= 0:
+            self.spawn_ending_obstacle()
+            self.ending_spawn_timer = 88
+
+        butterfly_rect = pygame.Rect(self.ending_butterfly_x - 15, int(self.ending_butterfly_y) - 13, 30, 26)
+        for obstacle in self.ending_obstacles:
+            obstacle["x"] -= 4.6
+            top_rect = pygame.Rect(int(obstacle["x"]), 0, obstacle["w"], obstacle["gap_y"])
+            gap_bottom = obstacle["gap_y"] + obstacle["gap_h"]
+            bottom_rect = pygame.Rect(int(obstacle["x"]), gap_bottom, obstacle["w"], 720 - gap_bottom)
+            if butterfly_rect.colliderect(top_rect) or butterfly_rect.colliderect(bottom_rect):
+                self.ending_state = "crashed"
+                self.ending_retry_cooldown = 10
+                self.sound_manager.play_sound("heartbreak")
+                break
+            if not obstacle["passed"] and obstacle["x"] + obstacle["w"] < self.ending_butterfly_x:
+                obstacle["passed"] = True
+                self.ending_score += 1
+                self.sound_manager.play_sound("goal")
+                if self.ending_score >= self.ending_target_score:
+                    self.ending_state = "complete"
+                    self.ending_obstacles = []
+                    self.ending_butterfly_vel = -1.2
+                    self.sound_manager.play_sound("goal")
+                    break
+
+        self.ending_obstacles = [o for o in self.ending_obstacles if o["x"] + o["w"] > -80]
+        if self.ending_state == "playing" and (self.ending_butterfly_y < 12 or self.ending_butterfly_y > 708):
+            self.ending_state = "crashed"
+            self.ending_retry_cooldown = 10
+            self.sound_manager.play_sound("heartbreak")
+
+    def draw_flappy_obstacle(self, x, y, w, h, top_segment=False):
+        if h <= 0 or x + w < -120 or x > 1400:
+            return
+
+        # Main pillar
+        body = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, (168, 124, 82), body)
+        pygame.draw.rect(self.screen, (110, 72, 42), body, 3)
+
+        # Timber columns
+        for i in range(1, 4):
+            bx = x + i * (w // 4)
+            pygame.draw.line(self.screen, (118, 82, 50), (bx, y + 4), (bx, y + h - 4), 2)
+
+        # Ledge cap around the gap
+        cap_h = max(8, min(24, h))
+        if top_segment:
+            cap_y = y + h - cap_h
+            pygame.draw.rect(self.screen, (138, 92, 58), (x - 9, cap_y, w + 18, cap_h))
+            pygame.draw.polygon(self.screen, (105, 70, 40), [(x - 12, cap_y), (x + w // 2, cap_y - 20), (x + w + 12, cap_y)])
+        else:
+            cap_y = y
+            pygame.draw.rect(self.screen, (138, 92, 58), (x - 9, cap_y, w + 18, cap_h))
+            pygame.draw.polygon(self.screen, (105, 70, 40), [(x - 12, cap_y + cap_h), (x + w // 2, cap_y + cap_h + 20), (x + w + 12, cap_y + cap_h)])
+
+    def draw_ending_flappy(self):
+        # Sunset-to-night gradient
+        for y in range(720):
+            t = y / 720.0
+            r = int(255 - t * 65)
+            g = int(185 - t * 95)
+            b = int(100 + t * 120)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (1280, y))
+
+        # Distant mountain silhouette
+        pygame.draw.polygon(self.screen, (95, 86, 112), [(0, 530), (220, 420), (430, 530)])
+        pygame.draw.polygon(self.screen, (85, 75, 102), [(320, 530), (650, 390), (980, 530)])
+        pygame.draw.polygon(self.screen, (75, 66, 92), [(850, 530), (1120, 440), (1280, 530)])
+
+        # Parallax city/building line
+        skyline_shift = int(self.ending_scroll * 0.35) % 260
+        for i in range(-1, 8):
+            bx = i * 260 - skyline_shift
+            bw = 135
+            bh = 110 + (i % 3) * 42
+            by = 640 - bh
+            pygame.draw.rect(self.screen, (120, 92, 74), (bx, by, bw, bh))
+            pygame.draw.polygon(self.screen, (92, 64, 48), [(bx - 8, by), (bx + bw // 2, by - 30), (bx + bw + 8, by)])
+            for wx in range(bx + 16, bx + bw - 16, 24):
+                for wy in range(by + 20, by + bh - 12, 28):
+                    pygame.draw.rect(self.screen, (235, 190, 120), (wx, wy, 8, 12))
+
+        # Water/ground strip
+        pygame.draw.rect(self.screen, (90, 88, 120), (0, 640, 1280, 80))
+        for wave_x in range(0, 1280, 28):
+            y = 660 + int(4 * math.sin((wave_x + self.anim_offset * 8) / 35.0))
+            pygame.draw.line(self.screen, (130, 135, 170), (wave_x, y), (wave_x + 14, y), 1)
+
+        # Obstacles (Flappy style)
+        for obstacle in self.ending_obstacles:
+            ox = int(obstacle["x"])
+            ow = obstacle["w"]
+            gap_y = obstacle["gap_y"]
+            gap_h = obstacle["gap_h"]
+            self.draw_flappy_obstacle(ox, 0, ow, gap_y, top_segment=True)
+            lower_y = gap_y + gap_h
+            self.draw_flappy_obstacle(ox, lower_y, ow, 720 - lower_y, top_segment=False)
+
+        # Player butterfly
+        self.draw_butterfly(
+            self.ending_butterfly_x,
+            int(self.ending_butterfly_y),
+            scale=1.35,
+            palette="rose",
+            tilt=self.ending_butterfly_tilt,
+        )
+
+        # Score panel
+        panel = pygame.Surface((380, 80), pygame.SRCALPHA)
+        panel.fill((10, 10, 20, 145))
+        self.screen.blit(panel, (20, 20))
+        self.draw_text(f"化蝶冲刺  {self.ending_score}/{self.ending_target_score}", self.font_small, (255, 230, 180), 40, 45)
+
+        if self.ending_state == "intro":
+            self.draw_text_panel("终章：蝶影穿廊", self.font_medium, (255, 236, 186), 640, 118)
+            self.draw_text_panel("按 空格 振翅开始", self.font_small, (255, 248, 220), 640, 168, bg=(20, 16, 34, 178))
+        elif self.ending_state == "crashed":
+            self.draw_text_panel("撞上了建筑！按 空格 重试", self.font_small, (255, 214, 194), 640, 120, bg=(58, 20, 24, 190), border=(255, 188, 170))
+        elif self.ending_state == "playing":
+            self.draw_text_panel("空格振翅，穿过楼阁间隙", self.font_small, (255, 245, 215), 640, 120)
+        elif self.ending_state == "complete":
+            for i in range(6):
+                bx = 260 + i * 155 + int(18 * math.sin((self.anim_offset + i * 8) / 8.0))
+                by = 430 - (i % 3) * 65 - int(10 * math.cos((self.anim_offset + i * 5) / 6.0))
+                self.draw_butterfly(bx, by, scale=0.95, palette="gold")
+            self.draw_text_panel("永恒之爱", self.font_large, (255, 178, 166), 640, 182, bg=(30, 14, 22, 196), border=(255, 214, 184), pad_x=22, pad_y=10)
+            self.draw_text_panel("双蝶终于并翼长飞", self.font_medium, (255, 236, 206), 640, 258, bg=(24, 18, 30, 188), border=(248, 224, 188))
+            self.draw_text_panel("按 空格 返回标题", self.font_small, (255, 248, 222), 640, 332, bg=(20, 18, 34, 180))
+            self.draw_text_panel("制作：余明炜", self.font_small, (255, 240, 210), 640, 392, bg=(16, 14, 26, 172), border=(230, 208, 172), pad_x=20, pad_y=7)
+    
+    def draw_willow_trees(self):
+        """Draw willow tree obstacles with hanging branches"""
+        for tree in self.current_willow_trees:
+            tree_x = tree["x"] - self.camera_x
+            tree_y = tree["y"]
+            tree_w = tree["w"]
+            tree_h = tree["h"]
+            
+            # Trunk (dark brown)
+            trunk_width = tree_w // 4
+            trunk_x = tree_x + (tree_w - trunk_width) // 2
+            pygame.draw.rect(self.screen, (101, 67, 33), (trunk_x, tree_y, trunk_width, tree_h * 0.6))
+            
+            # Foliage canopy (willow-like, greenish)
+            pygame.draw.ellipse(self.screen, (76, 110, 60), (tree_x, tree_y, tree_w, tree_h * 0.8))
+            pygame.draw.ellipse(self.screen, (90, 130, 80), (tree_x + tree_w * 0.1, tree_y - tree_h * 0.2, tree_w * 0.8, tree_h * 0.4))
+            
+            # Hanging willow branches
+            branch_color = (100, 140, 100)
+            for i in range(5):
+                branch_x = tree_x + (tree_w * (i + 1)) // 6
+                # Draw drooping branch lines
+                start_y = int(tree_y + tree_h * 0.3)
+                end_y = int(tree_y + tree_h * 0.9)
+                pygame.draw.line(self.screen, branch_color, (branch_x, start_y), (branch_x - 15, end_y), 2)
+                pygame.draw.line(self.screen, branch_color, (branch_x, start_y), (branch_x + 15, end_y), 2)
+    
+    def draw_text(self, text, font, color, x, y, center=False):
+        text_surface = font.render(text, True, color)
+        text_rect = text_surface.get_rect()
+        if center:
+            text_rect.center = (x, y)
+        else:
+            text_rect.topleft = (x, y)
+        self.screen.blit(text_surface, text_rect)
+    
+    def draw_volume_sliders(self):
+        """Draw music volume slider on title screen"""
+        # Music volume slider
+        self.draw_text("音乐", self.font_small, (100, 100, 100), 420, 105)
+        # Background bar
+        pygame.draw.rect(self.screen, (100, 100, 100), self.music_slider_rect)
+        # Filled portion (based on current volume)
+        filled_width = int(self.music_slider_rect.width * self.sound_manager.music_volume)
+        pygame.draw.rect(self.screen, (100, 200, 100), (self.music_slider_rect.x, self.music_slider_rect.y, filled_width, self.music_slider_rect.height))
+        # Border
+        pygame.draw.rect(self.screen, (50, 50, 50), self.music_slider_rect, 2)
+        # Volume percentage text
+        vol_text = f"{int(self.sound_manager.music_volume * 100)}%"
+        self.draw_text(vol_text, self.font_small, (100, 100, 100), 710, 105)
+    
+    def render(self):
+        self.screen.fill((245, 245, 220))
+        
+        if self.state == GameState.TITLE:
+            # Title background with gradient
+            for y in range(0, 720):
+                shade = int(200 + (y / 720) * 50)
+                pygame.draw.line(self.screen, (shade - 50, shade - 20, shade), (0, y), (1280, y))
+            
+            # Decorative butterflies
+            for i in range(4):
+                bx = 150 + i * 300 + int(40 * self.anim_offset / 60)
+                by = 150 + (i % 2) * 400
+                self.draw_butterfly(bx, by)
+            
+            # Title text (Chinese only)
+            self.draw_text("梁山伯与祝英台", self.font_large, (200, 50, 100), 640, 250, center=True)
+            self.draw_text("梁山伯与祝英台的传奇", self.font_medium, (100, 50, 150), 640, 320, center=True)
+            self.draw_text("按 空格 开始", self.font_small, (150, 100, 50), 640, 500, center=True)
+            
+            # Draw volume sliders
+            self.draw_volume_sliders()
+            
+            # Play title music on first render
+            if not self.title_music_played:
+                self.sound_manager.play_music("title")
+                self.title_music_played = True
+                self.ending_music_played = False
+            
+        elif self.state in PLAYABLE_LEVELS:
+            # Draw background based on level
+            if self.state == GameState.LEVEL_1:
+                self.draw_background_level1()
+            elif self.state == GameState.LEVEL_2:
+                self.draw_background_level2()
+            elif self.state == GameState.LEVEL_3:
+                self.draw_background_level3()
+            elif self.state == GameState.LEVEL_4:
+                self.draw_background_level4()
+            elif self.state == GameState.LEVEL_5:
+                self.draw_background_level5()
+            elif self.state == GameState.LEVEL_6:
+                self.draw_background_level6()
+            
+            # Draw level name (Chinese only)
+            level_data = LEVEL_PLATFORMS.get(self.state, {})
+            level_name = level_data.get("name_zh", "")
+            self.draw_text(level_name, self.font_medium, (139, 69, 19), 20, 20)
+            story_prompt = self.level_story_prompts.get(self.state, "")
+            if story_prompt:
+                self.draw_text(story_prompt, self.font_small, (230, 220, 200), 24, 62)
+            
+            # Draw platforms (world -> screen via camera)
+            for platform in self.current_platforms:
+                draw_x = platform["x"] - self.camera_x
+                # Skip drawing if off-screen
+                if draw_x + platform["w"] < 0 or draw_x > 1280:
+                    continue
+                # Shadow
+                shadow_rect = (draw_x + 4, platform["y"] + 6, platform["w"], platform["h"])
+                pygame.draw.rect(self.screen, (120, 90, 60), shadow_rect)
+                # Main platform
+                plat_rect = (draw_x, platform["y"], platform["w"], platform["h"])
+                pygame.draw.rect(self.screen, (205, 170, 110), plat_rect)
+                # Top highlight line
+                pygame.draw.line(self.screen, (255, 230, 180), (draw_x, platform["y"]), (draw_x + platform["w"], platform["y"]), 2)
+                # Border
+                pygame.draw.rect(self.screen, (120, 70, 30), plat_rect, 3)
+            
+            # Draw goal indicator (buildings serve as endpoints in background)
+            gx = int(self.goal_x - self.camera_x)
+            if self.state == GameState.LEVEL_6:
+                # Heavenly portal - enhanced with multiple rings
+                if -350 < gx < 1350:
+                    # Pulsing glow effect
+                    glow_scale = 1.0 + 0.2 * math.sin(self.anim_offset / 10)
+                    glow_radius = int(150 * glow_scale)
+                    glow_color = (255, 240 + int(15 * math.sin(self.anim_offset / 15)), 200)
+                    pygame.draw.circle(self.screen, glow_color, (gx, 100), glow_radius, 2)
+                    # Central bright point
+                    pygame.draw.circle(self.screen, (255, 255, 255), (gx, 100), 15)
+            
+            # Draw player (world -> screen)
+            if self.player:
+                self.player.draw(self.screen, self.camera_x)
+
+            # Liang follows Zhu during academy years and departure journey.
+            self.draw_following_liang()
+            
+            # Draw message
+            if self.message_timer > 0 and self.message:
+                # Panel behind message for readability
+                msg_surf = self.font_small.render(self.message, True, (200, 100, 50))
+                msg_rect = msg_surf.get_rect(center=(640, 118))
+                panel = pygame.Surface((msg_rect.width + 20, msg_rect.height + 12), pygame.SRCALPHA)
+                panel.fill((10, 10, 10, 180))
+                self.screen.blit(panel, (msg_rect.x - 10, msg_rect.y - 6))
+                self.screen.blit(msg_surf, msg_rect)
+            
+            # Draw controls (Chinese only)
+            if self.state == GameState.LEVEL_6:
+                controls = "空格/W/↑ 上升 | A/D 或 ← → 飞行 | R 重试"
+            elif self.state == GameState.LEVEL_5:
+                controls = "A/D 或 ← → 步行 | R 重试"
+            else:
+                controls = "A/D 或 ← → 移动 | 空格/W/↑ 跳 | R 重试"
+            self.draw_text(controls, self.font_small, (100, 100, 100), 10, 680)
+
+            # Expanded instructions for the last level's flap physics and objective.
+            if self.state == GameState.LEVEL_6:
+                panel_x, panel_y, panel_w, panel_h = 828, 18, 434, 132
+                panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+                panel.fill((20, 16, 34, 178))
+                self.screen.blit(panel, (panel_x, panel_y))
+                pygame.draw.rect(self.screen, (255, 225, 170), (panel_x, panel_y, panel_w, panel_h), 2)
+                self.draw_text("化蝶提示", self.font_small, (255, 232, 188), panel_x + 16, panel_y + 10)
+                self.draw_text("1. 多按 空格/W/↑ 保持高度", self.font_small, (232, 220, 248), panel_x + 16, panel_y + 38)
+                self.draw_text("2. 用 A/D 或 ← → 躲开柳枝", self.font_small, (232, 220, 248), panel_x + 16, panel_y + 66)
+                self.draw_text("3. 飞进前方光圈就过关", self.font_small, (232, 220, 248), panel_x + 16, panel_y + 94)
+        
+        elif self.state in self.story_messages:
+            # Story cutscene with background gradient
+            for y in range(0, 720):
+                shade = int(100 + (y / 720) * 50)
+                pygame.draw.line(self.screen, (shade, shade - 20, 200), (0, y), (1280, y))
+            
+            # Decorative butterflies (skip in the dark reveal transition scene).
+            if self.state != GameState.STORY_3C:
+                butterfly_x1 = 100 + int(50 * self.anim_offset / 60)
+                butterfly_x2 = 1180 - int(50 * self.anim_offset / 60)
+                self.draw_butterfly(butterfly_x1, 100)
+                self.draw_butterfly(butterfly_x2, 600)
+
+            # Story character cameo: show Liang in chapters where he is central.
+            if self.state == GameState.STORY_2:
+                self.draw_story_disguise_student(470, ground_y=620)
+                self.draw_liang_shanbo(320, ground_y=620, scale=1.18, pose="scholar")
+            elif self.state == GameState.STORY_3:
+                self.draw_eastern_jin_gatehouse(760, 438, 246, 182)
+                self.draw_story_disguise_student(470, ground_y=620)
+                self.draw_liang_shanbo(320, ground_y=620, scale=1.18, pose="scholar")
+            elif self.state == GameState.STORY_3A:
+                self.draw_story_zhu(470, ground_y=620, mood="calm")
+                self.draw_liang_shanbo(320, ground_y=620, scale=1.18, pose="companion")
+                self.draw_text_panel("再见", self.font_small, (255, 232, 198), 396, 498, bg=(30, 20, 32, 168), border=(236, 200, 162), pad_x=10, pad_y=4)
+            elif self.state == GameState.STORY_3C:
+                self.draw_liang_shanbo(350, ground_y=620, scale=1.18, pose="scholar")
+                self.draw_story_zhu(940, ground_y=620, mood="calm")
+                self.draw_text_panel("几个月后", self.font_small, (240, 232, 210), 640, 506, bg=(20, 18, 26, 185), border=(206, 186, 152), pad_x=12, pad_y=5)
+                # Simple visual cue: Liang receives news and realizes the truth.
+                letter_rect = pygame.Rect(414, 534, 44, 26)
+                pygame.draw.rect(self.screen, (238, 228, 202), letter_rect)
+                pygame.draw.rect(self.screen, (142, 124, 92), letter_rect, 2)
+                pygame.draw.line(self.screen, (168, 144, 104), (letter_rect.left + 3, letter_rect.top + 4), (letter_rect.right - 3, letter_rect.bottom - 4), 1)
+                self.draw_text("真相", self.font_small, (250, 214, 168), 930, 490, center=True)
+            elif self.state == GameState.STORY_3B:
+                self.draw_parent_figure(300, ground_y=620, gender="father")
+                self.draw_story_zhu(470, ground_y=620, mood="argue")
+                self.draw_parent_figure(640, ground_y=620, gender="mother")
+                self.draw_text("!", self.font_medium, (255, 120, 120), 386, 510, center=True)
+                self.draw_text("!", self.font_medium, (255, 120, 120), 556, 510, center=True)
+            elif self.state == GameState.STORY_4:
+                self.draw_story_zhu(520, ground_y=620, mood="calm")
+                self.draw_liang_shanbo(320, ground_y=620, scale=1.2, pose="dead")
+                self.draw_text_panel("山伯离世", self.font_small, (255, 224, 196), 392, 500, bg=(30, 20, 32, 170), border=(220, 186, 156), pad_x=10, pad_y=4)
+            elif self.state == GameState.STORY_5:
+                self.draw_liang_shanbo(300, ground_y=620, scale=1.2, pose="spirit")
+            
+            # Story messages (Chinese only)
+            messages = self.story_messages[self.state].get("zh", [])
+            top_y = 160
+            line_gap = 72
+            for idx, msg in enumerate(messages):
+                self.draw_text(msg, self.font_medium, (255, 255, 255), 640, top_y + idx * line_gap, center=True)
+            if self.state == GameState.STORY_3C:
+                # Fade from black into the "months later" reveal.
+                fade_frames = 45
+                if self.story_scene_timer < fade_frames:
+                    fade_alpha = int(255 * (1.0 - (self.story_scene_timer / float(fade_frames))))
+                    fade_overlay = pygame.Surface((1280, 720), pygame.SRCALPHA)
+                    fade_overlay.fill((0, 0, 0, max(0, min(255, fade_alpha))))
+                    self.screen.blit(fade_overlay, (0, 0))
+            self.draw_text("按空格继续", self.font_small, (255, 200, 100), 640, 672, center=True)
+        
+        elif self.state == GameState.ENDING:
+            self.draw_ending_flappy()
+
+            # Keep ending music active if state was switched directly
+            if not self.ending_music_played:
+                self.sound_manager.play_music("ending", loops=-1)
+                self.ending_music_played = True
+        
+        pygame.display.flip()
+    
+    def draw_butterfly(self, x, y, scale=1.0, palette="gold", tilt=0.0):
+        x = int(x)
+        y = int(y)
+
+        palettes = {
+            "gold": {
+                "wing_front": (255, 210, 90),
+                "wing_back": (238, 170, 60),
+                "body": (70, 50, 35),
+                "spot": (255, 240, 180),
+            },
+            "rose": {
+                "wing_front": (236, 126, 170),
+                "wing_back": (178, 82, 126),
+                "body": (72, 38, 28),
+                "spot": (255, 186, 220),
+            },
+        }
+        colors = palettes.get(palette, palettes["gold"])
+        wing_offset = int((7 + 4 * abs(self.anim_offset - 30) / 30) * scale)
+        wing_height = int(12 * scale)
+        wing_low = int(8 * scale)
+        body_h = int(18 * scale)
+        body_w = max(4, int(5 * scale))
+        tilt_px = int(max(-10, min(10, tilt / 4)))
+
+        # Rear wings
+        pygame.draw.polygon(
+            self.screen,
+            colors["wing_back"],
+            [(x - 1, y - int(4 * scale)), (x - wing_offset - int(10 * scale), y - wing_height + tilt_px), (x - wing_offset - int(12 * scale), y + int(2 * scale))],
+        )
+        pygame.draw.polygon(
+            self.screen,
+            colors["wing_back"],
+            [(x + 1, y - int(4 * scale)), (x + wing_offset + int(10 * scale), y - wing_height - tilt_px), (x + wing_offset + int(12 * scale), y + int(2 * scale))],
+        )
+
+        # Front lower wings
+        pygame.draw.polygon(
+            self.screen,
+            colors["wing_front"],
+            [(x - 1, y), (x - wing_offset - int(10 * scale), y + wing_low), (x - wing_offset - int(8 * scale), y + int(2 * scale))],
+        )
+        pygame.draw.polygon(
+            self.screen,
+            colors["wing_front"],
+            [(x + 1, y), (x + wing_offset + int(10 * scale), y + wing_low), (x + wing_offset + int(8 * scale), y + int(2 * scale))],
+        )
+
+        # Body
+        pygame.draw.ellipse(self.screen, colors["body"], (x - body_w // 2, y - body_h // 2, body_w, body_h))
+        pygame.draw.circle(self.screen, colors["body"], (x, y - body_h // 2 - max(2, int(2 * scale))), max(2, int(3 * scale)))
+        pygame.draw.line(self.screen, colors["body"], (x - 1, y - body_h // 2 - 2), (x - int(7 * scale), y - body_h // 2 - int(6 * scale)), 1)
+        pygame.draw.line(self.screen, colors["body"], (x + 1, y - body_h // 2 - 2), (x + int(7 * scale), y - body_h // 2 - int(6 * scale)), 1)
+
+        # Wing spots
+        pygame.draw.circle(self.screen, colors["spot"], (x - wing_offset - int(4 * scale), y - int(4 * scale)), max(2, int(2 * scale)))
+        pygame.draw.circle(self.screen, colors["spot"], (x + wing_offset + int(4 * scale), y - int(4 * scale)), max(2, int(2 * scale)))
+
+if __name__ == "__main__":
+    game = Game()
+    game.run()
